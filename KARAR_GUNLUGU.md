@@ -253,3 +253,134 @@ hatası değil, gerçek bulgudur.
   **Hipotez (ölçülecek):** chunk metnine belge künyesi (şirket, yıl, tür) eklemek
   ortak havuz sonuçlarını belirgin iyileştirir. Gün 2'nin ilk deneyi.
 - Bu bir "iyi sistem" değil sıfır noktasıdır; sonraki her karar bu sayılara karşı ölçülür.
+
+---
+
+## Karar 6: Kanıt eşleştirme kuralı — KAPANDI
+
+Bir chunk'ın "doğru" sayıldığı kural. Chunking değişse de sabit kalmalı; yoksa gün
+2'deki karşılaştırmalar geçersiz olur.
+
+**Doğrulama (PDF parse sonrası):** geliştirme kümesindeki 127 kanıtın 127'sinde,
+FinanceBench'in tam sayfa metnine en çok benzeyen PDF sayfası `evidence_page_num`
+ile birebir aynı. Yani sayfa numarası **0 tabanlı PDF sırası**, kayma yok. Medyan
+benzerlik 1,0; 8 kanıtta <0,6 (Best Buy, Corning; tablo düzeni farkı).
+
+| Seçenek | Artı | Eksi |
+|---|---|---|
+| a) Sayfa eşleşmesi | Net, doğrulandı, chunking'ten bağımsız | Chunk sayfadan küçükse aynı sayfadaki yanlış chunk da doğru sayılır |
+| b) Metin örtüşmesi | Chunk boyutundan bağımsız, ince | Eşik keyfi, tablo metni dağınık |
+| c) İkisi birden | Hem sağlam hem ince | İki metrik; başlık baştan sabitlenmezse esneklik doğar |
+
+**Karar: c.**
+
+| | Kural |
+|---|---|
+| Ana metrik (başlık) | Sayfa düzeyi: getirilen chunk kanıt sayfasındaysa doğru. Tüm raporlar bununla başlar |
+| İkincil metrik | Metin düzeyi: getirilen chunk'ın kanıt metninin 5-kelimelik parçalarının ne kadarını kapsadığı (0-1, sürekli) |
+| Eşik | Yok; ikincil metrik ikili değil, ortalama kapsama olarak raporlanır |
+| Kapsam | Geliştirme kümesi; kilitli test final ölçümde aynı iki metrikle |
+| Çoklu kanıt | Her kanıt ayrı sayılır; soru düzeyinde "tüm kanıtlar bulundu mu" ayrıca raporlanır |
+| Taşan chunk | Birden fazla sayfaya taşan chunk, kapsadığı tüm sayfalara ait sayılır |
+
+**Başlığın sabitlenme nedeni:** sonuçlar bir metrikte kaybedip diğerinde kazandığında
+hangisini sunacağımızı seçmek serbest kalmasın.
+
+**Sınırlılık:** ikincil metrik tablo düzeni farkı olan kanıtlarda (8/127) retrieval
+hatası olmadan düşük çıkabilir; raporda belirtilir.
+
+---
+
+## Karar 7: Retrieval mimarisi — ÖLÇÜMLE SONUÇLANDI (Deney 2 ve 3)
+
+Classic, multi-query, reranking ve RAG-Fusion birbirini dışlayan "türler" değil,
+hattın farklı noktalarına eklenen bileşenler.
+
+| Teknik | Neyi çözer | Maliyet |
+|---|---|---|
+| Classic | Sıfır noktası | Yok |
+| Reranking | Doğru chunk adaylarda ama üst sıralarda değil | Sorgu başına cross-encoder geçişi |
+| Multi-query | Kötü ya da belirsiz sorgu | Her sorguda ekstra LLM çağrısı |
+| RAG-Fusion | Multi-query + RRF birleştirme | Multi-query maliyeti + birleştirme |
+
+**Karar (plan):** classic baseline, asıl sistem reranking'li. Multi-query
+hata analizine bağlı opsiyonel.
+
+**Sıra (her adım bir öncekine karşı ölçülür):**
+
+1. Classic: BM25 ve dense ayrı (Karar 5)
+2. Hibrit: BM25 + dense, RRF
+3. Hibrit + reranker
+4. Fine-tune edilmiş retriever (tek başına ve reranker ile)
+5. Yalnızca hata analizi "sorgu ifadesi yüzünden kaçırılan" örnek gösterirse: multi-query
+
+**Gerekçe (hipotez, ölçülecek):**
+
+- Finans belgelerinde birbirine çok benzeyen sayfalar var; doğru sayfa adaylar
+  arasında olup üst sıralara çıkamayabilir. Kanıt: Recall@50 yüksek, Recall@5
+  düşük çıkması.
+- FinanceBench soruları uzman yazımı ve net; multi-query'nin çözdüğü belirsiz
+  sorgu problemi az beklenir.
+- Multi-query, LLM çağrısı nedeniyle ölçüme rastgelelik katar ve T4/süre
+  kısıtıyla çelişir.
+- RAG-Fusion'ın birleştirme (RRF) kısmı, sorgu yeniden yazmadan, adım 2'de
+  zaten denenir.
+
+**Kapanış koşulu:** yukarıdaki ölçüm tablosu çıkınca karar, sayılarla revize
+edilir ya da doğrulanır.
+
+**Kapanış (2026-10-01):** adım 1-3 ölçüldü. Dense ilk aşama BM25'ten net iyi; reranker anlamlı
+kazanç veriyor (Deney 2); hibrit BM25 eklemek kaybettiriyor (Deney 3). **Hat: dense ilk aşama +
+bge-reranker-v2-m3.** Açık kalan: hangi dense model (dört model reranker sonrası ayırt
+edilemiyor; seçim ön kayıtlı bir final protokolde yapılmalı) ve adım 4 (fine-tune). Multi-query
+denenmedi (hata analizi gerekçelendirmedi).
+
+---
+
+## Karar 8: Kilitli test seti — KAPANDI
+
+Sızıntının asıl riski veri setleri arasında değil, bizim test setine bakarak ayar
+yapmamızdır: chunking, retrieval ve reranker kararlarını aynı 150 soruya bakarak
+verirsek nihai skor seçimlerimize uyarlanmış olur ve iyimser çıkar.
+
+**Karar:** FinanceBench baştan ikiye bölündü (`sonuclar/fb_bolme.json`):
+
+| Küme | Soru | Kullanım |
+|---|---|---|
+| Geliştirme | 99 (33/33/33 soru türü) | Tüm tasarım ve ayar kararları bunun üzerinde verilir |
+| Kilitli test | 51 (17/17/17), 11 şirket | Proje sonuna kadar incelenmez. En sonda **bir kez** ölçülür, sonuç ne olursa olsun raporlanır |
+
+**Bölme kuralı:** şirket bazında (aynı şirketin belgeleri içerik paylaşır), sabit
+tohum 447. 10.000 aday tohum arasından seçim yalnızca bölmenin yapısına (soru
+sayısı, soru türü dengesi) baktı, hiçbir model sonucuna bakmadı.
+
+**Takas:** kilitli test 51 soru olduğundan güven aralıkları geniştir; küçük
+farklar ayırt edilemeyebilir. Bootstrap aralığıyla bu açıkça gösterilir.
+
+**Not:** `04103` (General Mills 2019, aynı rapor sızıntısı) kilitli kümeye düştü.
+Bu soru için eğitimden çıkarma politikası (Karar 1) zaten uygulanıyor.
+
+---
+
+## Karar 9: Arama uzayı — KAPANDI
+
+Soru: retrieval bir soruyu cevaplarken nerede arama yapar? 150 soru 84 belgeye bağlı;
+korpusta 360 belge ve 53.399 sayfa var.
+
+| Seçenek | Artı | Eksi |
+|---|---|---|
+| a) Tek belge: sorunun belgesinde ara | Retriever ve chunking kalitesini izole ölçer, hızlı | Doğru belgeyi önceden söylemiş oluruz; gerçek sistemde bu yok. ~150 sayfa içinde sayılar yüksek, yöntemler ayırt edilemez |
+| b) Ortak havuz: 360 belgenin tüm sayfaları tek indeks | Gerçekçi, zor, yöntemler arası fark belirgin | Aynı şirketin farklı yılları karışır, sayılar düşük |
+| c) İkisi de: b başlık, a teşhis | Hatanın "yanlış belge" mi "doğru belge yanlış sayfa" mı olduğunu gösterir | İki ölçüm; indeks küçük olduğundan ek maliyet düşük |
+
+**Karar: c, başlık olarak b.**
+
+**Gerekçe:**
+
+- Gerçek sistemde belge önceden bilinmez; b'nin sayıları savunulabilir olandır.
+- a, hatanın belge bulmada mı sayfa bulmada mı olduğunu ayırır.
+- Başlık baştan sabitlenir (Karar 6'daki gibi): sonuçlara göre seçim yapılmaz.
+- Reranker etkisi (Karar 7) b'de daha net görünür; benzer belgelerin karışması onun çözdüğü sorundur.
+
+**Not:** FinanceBench reposunda belge listesinde olmayan 8 ek PDF vardı; indirilmedi,
+korpus 360 belge. Soruların hiçbiri o 8 belgeye bağlı değil. README'de belirtildi (Durum bölümü).
