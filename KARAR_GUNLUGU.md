@@ -656,3 +656,108 @@ edildi; EDGAR'a ihtiyaç görünmüyor. Kapatılması kullanıcı onayına bıra
 sayfada da geçiyorsa (örneğin 10-K'da özet ve ayrıntılı tablo) o sayfayı getirmek hata
 sayılır. Sayfa Recall'u bu yüzden gerçek retrieval başarısını olduğundan düşük gösterebilir;
 cevap düzeyi ölçümü (Karar 2) bunu tamamlar.
+
+---
+
+## Deney 4: Chunk boyutu ve örtüşme (gün 2) — TAMAMLANDI: H4 DESTEKLENMEDİ, c200 kalır
+
+**Sonuçlardan ÖNCE yazıldı (2026-10-01).** Varsayım: kullanıcı tasarımı itirazsız onayladı
+(üç onay sorusuna ayrıca yanıt vermedi, Karar 2/4'ün ertelenmesiyle devam etmemizi istedi).
+
+**Gözlem:** tek belgede çoğu kaçırma yakın kaçırma (kanıt sayfası 6-50. sırada: 39 / 127);
+chunk tasarımı hiç araştırılmadı, yalnızca 200 kelimelik baz kullanıldı.
+
+**Metrik tuzağı:** Recall@k "ilk k chunk" demek; chunk büyüdükçe k chunk daha çok metin demektir
+ve üretimde daha çok bağlam tüketir. Chunk sayısına göre kıyaslarsak büyük chunk haksız
+kazanır. **Ana metrik eşit bağlam bütçesi:** sıralı chunk'lar, birikmiş kelime sayısı 1000'e
+ulaşana kadar alınır (chunk, başlamadan önce birikim < 1000 ise dahil edilir; tam 200
+kelimelik chunk'larda bu tam 5 chunk = Recall@5). Kanıt sayfasından chunk bu pencerede mi
+= **Recall@1000w**.
+
+**Varyantlar (sabit, hepsi sayfa sınırını aşmaz):**
+
+| Etiket | Chunk | Rerank derinliği (≈10.000 kelime aday) |
+|---|---|---|
+| c100 | 100 kelime, örtüşme yok | 100 |
+| **c200 (baz)** | 200 kelime, örtüşme yok | 50 |
+| c200o50 | 200 kelime, 50 kelime örtüşme | 50 |
+| c300 | 300 kelime, örtüşme yok | 33 |
+
+Sayfa başına tek chunk **bilerek dışarıda**: ~700 token, 512 sınırlı modellerde ve
+reranker'da kesilir, adil kıyas olmaz.
+
+**Modeller:** bge-base-en ve e5-base (künyesiz), ilk aşama ve ilk aşama + reranker
+(bge-reranker-v2-m3, Deney 2 ile aynı). Her iki arama uzayı, geliştirme kümesi.
+
+**Hipotez H4:** en az bir varyant, C200'e göre eşit bütçe Recall'unu artırır.
+**Ölçüt (sabit):** bir varyant, **reranker sonrası** Recall@1000w'de C200'ü eşleştirilmiş
+bootstrap (%95, 10.000 tekrar) ile **4/4** karşılaştırmada (2 model × 2 uzay) anlamlı
+pozitif farkla geçerse kazanır. Aksi hâlde C200 kalır. Üç varyant birden denendiği için
+ölçüt bilerek sıkıdır.
+
+**Açık beklenti (tahmin, ölçülmedi):** hiçbir varyantın 4/4 ölçütünü geçmesini beklemiyorum;
+C200 kalacak diye tahmin ediyorum. Ölçüt bu tahmine göre değil, sabit eşiğe göre değerlendirilir.
+
+**Ek raporlama (ölçüte dahil değil):** chunk sayısı, 512 sınırlı modellerde kesilen chunk
+oranı, Recall@k (chunk sayısı), ilk aşama bütçe Recall'u, MRR, metin kapsama (büyük chunk'a
+yanlı olduğu bilinir), gömme süresi.
+
+**SONUÇ (2026-10-01; `src/chunk_deneyi.py`; bge-base-en ve e5-base, reranker bge-reranker-v2-m3)**
+
+**Ana metrik: Recall@1000w, reranker sonrası;** A = baz c200, B = varyant; fark için eşleştirilmiş
+bootstrap %95 aralığı. `*` = aralık 0'ı içermiyor.
+
+| Varyant | Model | Ortak havuz A → B | Fark [aralık] | Tek belge A → B | Fark [aralık] |
+|---|---|---|---|---|---|
+| c100 | bge-base-en | 0,362 → 0,409 | +0,047 [-0,016; +0,113] | 0,646 → 0,740 | +0,094 [+0,023; +0,174] * |
+| c100 | e5-base | 0,409 → 0,441 | +0,031 [-0,032; +0,098] | 0,646 → 0,740 | +0,094 [+0,030; +0,168] * |
+| c200o50 | bge-base-en | 0,362 → 0,346 | -0,016 [-0,055; +0,023] | 0,646 → 0,630 | -0,016 [-0,060; +0,030] |
+| c200o50 | e5-base | 0,409 → 0,409 | 0,000 [-0,038; +0,040] | 0,646 → 0,622 | -0,024 [-0,070; +0,023] |
+| c300 | bge-base-en | 0,362 → 0,315 | -0,047 [-0,095; 0,000] | 0,646 → 0,669 | +0,024 [-0,043; +0,090] |
+| c300 | e5-base | 0,409 → 0,417 | +0,008 [-0,061; +0,073] | 0,646 → 0,646 | 0,000 [-0,067; +0,070] |
+
+**Ön kayıtlı ölçüt (4/4 anlamlı pozitif):** c100 2/4, c200o50 0/4, c300 0/4. **Hiçbir varyant
+kazanmadı; baz c200 kalır.** Ön kayıttaki tahmin ("C200 kalacak") doğrulandı.
+
+**İlk aşama (reranker öncesi) Recall@1000w:** c100 dört karşılaştırmanın dördünde anlamlı arttı
+(+0,079, +0,189, +0,094, +0,142); c300 e5'te anlamlı düştü (-0,079, -0,102); c200o50'de anlamlı
+fark yok. Reranker sonrası c100 avantajı yarıya indi ve ortak havuzda anlamsızlaştı.
+
+**Ek (ölçüt dışı) bilgiler:**
+
+| Varyant | Chunk sayısı | 512'de kesilen (bge/e5) | Gömme süresi (bge/e5) | Rerank çift/sn |
+|---|---|---|---|---|
+| c100 | 299.169 | %0,03 / %0,04 | 617 / 629 sn | 134 |
+| c200 (baz) | 163.543 | %0,24 / %0,25 | 620 / 627 sn | 72 |
+| c200o50 | 191.739 | %0,26 / %0,27 | 777 / 783 sn | 75 |
+| c300 | 117.240 | %3,13 / %3,22 | 534 / 536 sn | 60 |
+
+**Yorumlama kontrolü (post hoc, betimsel, ölçüt değil; `src/butce_kapsama.py`):** sayfa düzeyi
+bütçe Recall'u, eşit kelime bütçesinde küçük chunk'ın daha çok FARKLI sayfadan parça getirmesinden
+yapısal fayda görebilir. Bütçe penceresindeki chunk'ların BİRLEŞİMİNİN kanıt metnini
+kapsama oranı (reranker sonrası):
+
+| Varyant | Tek belge sayfa isabeti (bge / e5) | Tek belge birleşim kapsama (bge / e5) | Ort. farklı sayfa (tek belge) |
+|---|---|---|---|
+| c100 | 0,740 / 0,740 | **0,418 / 0,412** | 8,8 |
+| c200 (baz) | 0,646 / 0,646 | 0,527 / 0,534 | 5,3 |
+| c200o50 | 0,630 / 0,622 | 0,535 / 0,527 | 5,0 |
+| c300 | 0,669 / 0,646 | **0,608 / 0,589** | 4,1 |
+
+- **c100'ün sayfa isabeti kazancı, kanıt metninin kapsanmasında kayıp pahasına geliyor:**
+  daha çok sayfaya yayılıyor (8,8 vs 5,3 sayfa), kanıt metninin daha azını içeriyor
+  (0,42 vs 0,53). Sayfa metriği tek başına bu varyantı olduğundan iyi gösteriyor.
+- **c300 ters yönde:** sayfa isabeti benzer, ama kanıt metninin daha çoğunu getiriyor
+  (0,60 vs 0,53 tek belge); bedeli %3 kesilme ve ortak havuzda sayfa isabetinde düşüş eğilimi.
+- Bu kapsama farkları için anlamlılık testi yapılmadı (betimsel); örtüşme (c200o50) iki
+  metrikte de baz ile aynı: fayda yok.
+
+**Sonuç:** üç varyant da baz'ı ön kayıtlı ölçütle geçemedi; **c200 korunur.** Önemli bulgu:
+sayfa isabeti ve kanıt kapsaması **farklı yönlere işaret ediyor** (c100 ve c300). Hangisinin
+önemli olduğunu, üretilen cevabın doğruluğu belirler (Karar 2); chunk boyutu için nihai
+yargı cevap düzeyinde ölçümle verilmelidir. Bu, Karar 2'nin ertelenmiş revizesini daha da
+öncelikli kılıyor.
+
+**Sınırlar:** iki model, geliştirme kümesi (99 soru); c100/c300 farkları ölçüte takıldığı için
+"baz kalır" kararı sağlam, ama c100'ün ayrı bir hat olarak (ör. küçük chunk ilk aşama + büyük
+bağlam penceresi) değeri bu deneyle test edilmedi.
