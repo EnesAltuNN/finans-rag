@@ -791,3 +791,95 @@ kapsıyordu. **Revize (karar): katmanlı, önce deterministik metrik:**
 
 Yargıç kullanılırsa okuyucudan farklı bir model olmalı (kendi çıktısını kayırma riski),
 uyum oranı (insanla) raporlanır. %65'e yakın cevap yargıç olmadan ölçülür.
+
+## Karar 10: Okuyucu model ve bağlam koşulları — KISMEN KAPANDI
+
+**Üç bağlam koşulu (karar, aynı soru ve prompt ile):**
+
+1. **Kapalı kitap:** bağlam yok.
+2. **Getirilen bağlam:** hat (dense + reranker, c200) ilk 1000 kelime.
+3. **Oracle bağlam:** gold kanıt sayfası(ları).
+
+Ayrıştırma: oracle − getirilen = retrieval kaybı; oracle ve 100 arası = okuyucu kaybı;
+getirilen − kapalı kitap = retrieval'ın kattığı değer. Chunk seçimi (c100/c200/c300) ve
+fine-tune faydası da cevap düzeyinde bu çerçevede sınanır.
+
+**Okuyucu LLM (karar):** iki okuyucu, aynı prompt ve bağlamlarla:
+
+- **Yerel açık model:** kullanıcının M4 MacBook Air (16 GB birleşik bellek) makinesinde;
+  önceki llama deneyimi var. Fizibilite (hangi model, hangi çalışma ortamı, bağlam uzunluğu,
+  hız) çalıştırmadan önce doğrulanacak.
+- **Gemini:** kullanıcının mevcut kredileriyle. Model adı ve sürümü, güncel dokümantasyondan
+  doğrulanıp sabitlenecek (tekrarlanabilirlik). Verinin API'ye gönderilmesi (FinanceBench
+  CC-BY-NC) kullanıcının değerlendirmesinde; API anahtarı depoya girmez (ortam değişkeni).
+
+**Gerekçe:** iki farklı okuyucu proje çeşitliliği sağlar ve "retrieval sonuçları okuyucu modelden
+bağımsız mı?" sorusunu cevaplar. Yerel model tam tekrarlanabilir açık yığın hikâyesi verir,
+Gemini daha güçlü bir üst sınır sunar.
+
+**Hâlâ açık:** model adları ve sürümleri, prompt, çalışma ortamı (Ollama / llama.cpp / MLX),
+sıcaklık (0 öneriliyor), bağlam penceresi, yargıç modeli seçimi.
+
+---
+
+## İnceleme notları (2026-10-01, ikinci gözden geçirme)
+
+Kapsam: günlüğün tamamı, README, ölçüm / bölme / cevap metriği / dense retrieval kodu okundu;
+dört şüphe veriyle sınandı. Bu bölüm bulguları ve yapılan düzeltmeleri kaydeder.
+
+**1. Cevap metriği gerçek model cevaplarında hatalıydı (düzeltildi).** İlk sürümün testi yalnızca
+"gold'u tahmin olarak ver, kabul etmeli" idi; iki taraf aynı hatayla ayrıştırıldığı için gerçek
+model biçimlerindeki hataları göremiyordu. Gerçekçi cevaplarla yedi vakanın yedisi yanlış sayıldı:
+
+| Vaka | Kök neden | Çözüm |
+|---|---|---|
+| `0.96x` → 0 | Sondaki sözcük sınırı sayıyı ondalıkta bölüyordu | Sayıya bitişik harf/rakam olmasın, `x` çarpan kabul |
+| `($1.8 bn)` → negatif | Açılış parantezi eksi sayılıyordu | Parantez eksi değil (gold'larda muhasebe negatifi yok) |
+| satır başı `-100%` → negatif | Madde işareti eksi sayılıyordu | Satır başı / kelimeye bitişik `-` işaret değil |
+| "In FY2018 … $1,577" → 2018 | İlk sayı seçiliyordu; `FY2018` içinde 2018 ayrışıyordu | Harfe bitişik sayı sayı değil; yıl benzeri tam sayılar aday dışı |
+| "…, no, 3M is not …" | Yalnızca cevap başındaki Yes/No bakılıyordu | İlk 12 kelimede noktalamayla biten yes/no de kabul |
+| `0.125` → `0.12` | Python yuvarlaması çifte yuvarlar | Yarım-yukarı yuvarlama (Decimal) |
+| "3M's capex …" → 3 | Şirket adı `3M` ölçekli sayı sanıldı | Sayıya bitişik büyük harf M/K ($ olmadan) sayı değil |
+
+Yeni şablon testi iki hata daha yakaladı: "10-K" içindeki 10 aday seçiliyordu (form adları artık
+aday değil), ve model `$` işaretini bırakınca "ilk sayı" kuralı sayfa numarasını seçiyordu (artık
+gold'un biçimine en çok uyan aday seçiliyor: $, %, ondalık). `tests/test_cevap_metrik.py` artık
+her geliştirme gold'u için gerçekçi cevap şablonları (1.114 kabul), bozulmuş cevaplar (68 ret),
+270 hüküm şablonu ve 38 anahtar-sayı şablonu içerir. **Hiçbir model sonucu etkilenmedi**: metrik
+henüz hiçbir model çıktısında kullanılmamıştı. Bilinen sınırlar: birim dönüşümü yalnızca soru
+"in USD millions/billions/thousands" diyorsa yapılır; yüzdeyi kesir yazmak (0.019 vs 1.9%)
+eşleşmez; parantezli negatifler okunmaz.
+
+**2. Güven aralıkları şirket bağımlılığını yok sayıyordu (kontrol edildi).** 99 geliştirme sorusu
+yalnızca **21 şirkete** dağılıyor (şirket başına 1-9 soru, medyan 4); aynı şirketin soruları
+bağımsız değil. Reranker karşılaştırmaları şirket-kümeli bootstrap ile yeniden hesaplandı:
+sonuç aynı kaldı (10 karşılaştırmadan 9'u yine anlamlı pozitif; e5 tek belge yine anlamsız;
+örn. bge-base ortak havuz: soru-bazlı [+0,116; +0,283], şirket-bazlı [+0,120; +0,292]).
+**Karar:** bundan sonraki ön kayıtlarda şirket-kümeli bootstrap standarttır. Önceki deneylerin
+ölçütleri soru-bazlı idi ve yalnızca reranker için yeniden doğrulandı.
+
+**3. fp16 skorlama (kontrol edildi).** e5-base ortak havuz: 14/99 soruda ilk-5 kümesi fp16 ile
+fp32 arasında değişiyor ama Recall@5 farkı +0,008 [-0,017; +0,039], yani gürültü. Gelecekteki
+skorlamada fp32'ye geçmek bedava ve önerilir.
+
+**4. Günlük tutarlılığı (düzeltildi).** Çürütülen iddialar ("darboğaz doğru belgeyi bulmak",
+"büyük kısmı yanlış belge bulma"), yanlış okunabilecek "0/12" ifadesi (gerçekte 4 soru) ve eski
+durum satırları (Karar 4 "şimdilik verilmedi", Karar 7 "plan onaylandı", durum tablosunun
+tarihi) revize notlarıyla işaretlendi; durum tablosu deney sonuçlarıyla güncellendi.
+
+**5. Kısıtlar değişti.** README'deki "en fazla 1 hafta" ve "Colab T4" kısıtları artık geçerli
+değil: zaman kısıtı yok; kaynaklar yerel RTX 2060 (6 GB), Colab T4 (fine-tune), M4 MacBook Air
+(yerel okuyucu LLM) ve Gemini kredileri. README güncellendi.
+
+**Açık ve karar gerektiren konular (henüz yapılmadı):**
+
+- **Azami batch ölçümü** (Karar 3, README gün 1) hâlâ yok; yerel 6 GB yetersiz, Colab T4'te yapılmalı.
+- **Fine-tune stratejisi.** Reranker sonrası dört embedding modelinin farkı büyük ölçüde siliniyor,
+  bu yüzden embedding fine-tune'ının uçtan uca etkisi küçük kalabilir. FinQA tek sayfalık sayısal
+  sorulardan oluşuyor (en iyi olduğumuz tür: metrics-generated); en zayıf tür domain-relevant
+  FinQA tarafından kapsanmıyor. FinQA metni de küçük harfli ve kelimelere bölünmüş
+  ("company 2019s common stock"), PDF chunk'larımıza benzemiyor. Seçenekler: (a) FinQA ile embedding,
+  (b) reranker fine-tune, (c) korpus belgelerinden sentetik sorgu. Ayrı karar olarak konuşulacak.
+- **Final protokolün ön kaydı:** hangi dense model, kilitli testte ölçülecek en fazla 3 sistem,
+  küme bootstrap, 51 soru / 11 şirketin gücü (yalnızca ~0,1 ve üstü farklar ayırt edilebilir).
+- **Okuyucu hattı:** prompt şablonu ve "Final answer:" biçimi, Mac ve Gemini betikleri, yargıç modeli.
