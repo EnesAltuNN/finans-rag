@@ -532,3 +532,79 @@ MRR de her yöntemde ve iki uzayda anlamlı arttı.
 **Sınırlar:** 99 soru, tek kümede ölçüm (kilitli test değil); 10 karşılaştırma yapıldı (5
 yöntem × 2 uzay), ama sonuç tek bir anlamlı fark değil tutarlı bir örüntü (10/10 yönde
 pozitif, 9/10 anlamlı). Reranker fine-tune edilmedi, ayarlanmadı.
+
+---
+
+## Deney 3: Hibrit arama, BM25 + dense (Karar 7, adım 2) — TAMAMLANDI: H3 ve H3b DESTEKLENMEDİ
+
+**Sonuçlardan ÖNCE yazıldı (2026-10-01).**
+
+**Gözlem:** BM25 bu veride dense'ten çok zayıf (ortak havuz R@5 0,03; en iyi dense 0,21).
+Sözcük eşleşmesinin dense'in kaçırdığı sayfaları tamamlayıp tamamlamadığı bilinmiyor.
+
+**Müdahale:** Reciprocal Rank Fusion (RRF): skor = Σ 1/(k + sıra), **k = 60** (yaygın
+varsayılan; ayarlanmayacak). BM25 sıralaması ile her bir dense modelin sıralaması
+birleştirilir (4 hibrit), birleşik ilk 100 tutulur. Künyesiz. Her iki arama uzayında,
+geliştirme kümesinde.
+
+Ek, ölçüte dahil olmayan keşif varyantı: `rrf_hepsi` = BM25 + 4 dense (5 liste).
+
+**H3:** hibrit, tek başına dense'e göre Recall@5'i artırır.
+**Ölçüt 1 (sabit):** eşleştirilmiş bootstrap farkı (%95, 10.000 tekrar) 0'ı içermeyen
+pozitif; **her uzayda ayrı ayrı**, 4 hibritin **en az 3'ünde**.
+
+**H3b:** hibrit + reranker (derinlik 50, Deney 2 ile aynı), dense + reranker'a göre
+Recall@5'i artırır.
+**Ölçüt 2 (sabit):** aynı biçimde, her uzayda ayrı ayrı, 4 hibritin en az 3'ünde anlamlı
+pozitif fark.
+
+**Açık beklenti (tahmin, ölçülmedi):** BM25 çok zayıf olduğundan hibritin kazancının küçük
+ya da anlamsız olmasını, hatta zayıf BM25 listesinin sıralamayı bozmasını bekliyorum.
+Ölçüt bu beklentiye göre değil, yukarıdaki sabit eşiğe göre değerlendirilecek.
+
+**Raporlama:** 4 hibrit + keşif varyantı × 2 uzay, fark ve aralıklarıyla, sonuç ne olursa
+olsun. Çoklu karşılaştırma uyarısı: ölçütler tutarlılık arar (≥3/4).
+
+**SONUÇ (2026-10-01; `src/hibrit.py`, RRF k=60, geliştirme kümesi)**
+
+Recall@5; A = dense tek başına, B = hibrit (BM25 + o dense); fark için eşleştirilmiş
+bootstrap %95 aralığı. `*` = aralık 0'ı içermiyor.
+
+**H3: hibrit vs dense (ilk aşama)**
+
+| Dense | Ortak havuz A → B | Fark [aralık] | Tek belge A → B | Fark [aralık] |
+|---|---|---|---|---|
+| bge-base-en | 0,157 → 0,094 | -0,063 [-0,114; -0,016] * | 0,480 → 0,244 | -0,236 [-0,333; -0,142] * |
+| e5-base | 0,213 → 0,142 | -0,071 [-0,137; -0,008] * | 0,567 → 0,244 | -0,323 [-0,417; -0,230] * |
+| gte-base-en | 0,189 → 0,118 | -0,071 [-0,136; -0,008] * | 0,449 → 0,205 | -0,244 [-0,336; -0,156] * |
+| BGE-M3 | 0,197 → 0,134 | -0,063 [-0,120; -0,008] * | 0,433 → 0,213 | -0,220 [-0,304; -0,138] * |
+
+**H3b: hibrit + reranker vs dense + reranker**
+
+| Dense | Ortak havuz A → B | Fark [aralık] | Tek belge A → B | Fark [aralık] |
+|---|---|---|---|---|
+| bge-base-en | 0,354 → 0,315 | -0,039 [-0,086; +0,007] | 0,630 → 0,575 | -0,055 [-0,109; -0,008] * |
+| e5-base | 0,394 → 0,315 | -0,079 [-0,134; -0,031] * | 0,630 → 0,583 | -0,047 [-0,102; +0,007] |
+| gte-base-en | 0,323 → 0,291 | -0,031 [-0,079; +0,016] | 0,630 → 0,512 | -0,118 [-0,185; -0,057] * |
+| BGE-M3 | 0,323 → 0,307 | -0,016 [-0,065; +0,032] | 0,606 → 0,504 | -0,102 [-0,163; -0,051] * |
+
+**Ön kayıtlı ölçütler:** Ölçüt 1: 0/4 ortak, 0/4 tek (≥3 gerekliydi). Ölçüt 2: 0/4 ortak,
+0/4 tek. **İkisi de sağlanmadı; H3 ve H3b desteklenmedi.** Hibrit dense'ten anlamlı
+biçimde **kötü** (ilk aşamada 8/8 karşılaştırmada anlamlı negatif; reranker sonrası 4/8
+anlamlı negatif, kalanı anlamsız).
+
+Ön kayıttaki açık beklenti ("zayıf BM25 sıralamayı bozabilir") doğrulandı.
+
+**Keşif (ön kayıt dışı, post hoc; kanıt değil yön göstergesi):** `rrf_hepsi` (BM25 + 4
+dense) vs en iyi tek dense (e5-base), R@5: ortak ilk aşama 0,213 → 0,283 (+0,071
+[0,000; +0,143], anlamsız); ortak +rerank 0,394 → 0,402 (anlamsız); tek ilk aşama 0,567 →
+0,394 (anlamlı kötü); tek +rerank 0,630 → 0,638 (anlamsız). Reranker sonrası fark yok.
+
+**Hipotez (ölçülmedi):** RRF eşit ağırlık verdiğinden belirgin biçimde zayıf BM25 listesi
+(tek belge R@5 0,157 vs dense 0,43-0,57) sıralamayı aşağı çekiyor. Ağırlıklı birleştirme
+ya da yalnızca dense modellerin birleşimi ayrı ön kayıtlı deney olarak denenebilir; bu
+sonuca göre ayarlanmış sayılmaz.
+
+**Karar 7'ye etki:** mimari adımları ölçümle şöyle sonuçlandı: classic dense → +reranker
+(**anlamlı kazanç**) ; hibrit BM25 eklemek **kaybettiriyor**. Önerilen hat: dense ilk
+aşama + reranker. Fine-tune (adım 4) bu hat üzerinde ölçülecek.
