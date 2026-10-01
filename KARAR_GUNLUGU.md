@@ -184,3 +184,72 @@ projede belirsiz kapsam en büyük risk.
 verilecek. Varsayılan eğilim: PDF'ler yeterliyse EDGAR kapsam dışı, gerekçesi
 README'de. EDGAR kuralları zaten doğrulandı: saniyede 10 istek, zorunlu
 `User-Agent`, `Accept-Encoding: gzip, deflate`, `Host: www.sec.gov`.
+
+---
+
+## Karar 5: Baseline hattı — KAPANDI
+
+Gün 1 sonunda çalışır olmalı. Bu bir "iyi sistem" değil, **sıfır noktası**.
+
+**Karar:** sabit 512 token chunk, örtüşme yok, reranker yok. BM25 ve hazır
+(fine-tune edilmemiş) yoğun retrieval **ayrı ayrı** raporlanır; birleştirilmiş
+(RRF) hâli bunlardan sonra, ayrı bir ölçüm olarak eklenir. Ana sayı: Recall@5.
+
+**Gerekçe:** Birleştirmeyi baştan yaparsak gün 3'te neyin neyi iyileştirdiğini
+ayırt edemeyiz. Sonraki her karar bu sayılara karşı ölçülür.
+
+**Revize edildi (2026-10-01):** "sabit 512 token" yerine **sabit 200 kelime** (ilk öneri 300 idi, ölçümle 200'e indi; aşağıya bkz.).
+Token, her modelin tokenizer'ında farklı sayıda çıkar; token bazlı kesersek ya her
+modelin chunk'ları farklı olur (karşılaştırma bozulur) ya da tek tokenizer'a göre
+kesilen chunk, 512 sınırlı bir modelde sessizce kesilir. Kelime sayısı model
+bağımsızdır: dört model birebir aynı chunk'ları görür.
+
+- Sayfa sınırı: baseline'da chunk sayfa sınırını **aşmaz** (her chunk tek sayfaya ait;
+  Karar 6'nın sayfa metriği belirsizlik taşımaz). Sayfa sınırını aşan yapıya saygılı
+  chunking gün 2'nin karşılaştırma konusu.
+- Doğrulama zorunlu: her modelin tokenizer'ıyla en uzun chunk token olarak ölçülür;
+  512 sınırlı modellerde kesilen chunk çıkarsa kelime sayısı düşürülür.
+
+**Doğrulama sonucu (`src/chunk_kontrol.py`, 2026-10-01):**
+
+| Kelime | Chunk | bge-base-en / e5 (sınır 512) aşan | BGE-M3 / gte (sınır 8192) aşan |
+|---|---|---|---|
+| 300 | 117.240 | %3,13 / %3,22 | 0 |
+| **200** | **163.543** | **%0,24 / %0,25** | **0** |
+
+- 300 kelimede kesilmenin nedeni sayı yoğun tablolardır: sınırı aşan chunk'larda
+  token/kelime oranı 2,14 (genel 1,38). Finans cevapları çoğunlukla bu tablolarda
+  olduğundan 512 sınırlı modeller haksız dezavantaja düşerdi.
+- Noktalı çizgi (içindekiler/ek listesi) sadeleştirmesi denendi: en uzun chunk 4614 →
+  1124 token oldu ama sınırı aşan oranı yalnızca %3,13 → %2,97. Kazancı yok, uygulanmadı.
+- Kalan sınırlılık: 200 kelimede bile ~%0,25 chunk (≈400) 512 sınırlı modellerde
+  kesilir; en uzun chunk'lar noktalı çizgili listeler. Raporda belirtilir.
+- Bedel: chunk sayısı ~1,4 kat arttı, chunk başına bağlam azaldı. Bu bir sıfır noktasıdır;
+  chunk boyutu gün 2'de ayrıca karşılaştırılacak.
+
+**Ölçüm 1: BM25 baseline (2026-10-01, `src/bm25_baseline.py`, geliştirme kümesi: 99 soru, 127 kanıt)**
+
+Ayarsız: küçük harf + alfanumerik tokenizasyon, stopword/stemming yok, k1=1,5, b=0,75.
+Köşeli parantez: %95 bootstrap aralığı.
+
+| Arama uzayı | Recall@1 | Recall@5 | Recall@10 | Recall@50 | MRR |
+|---|---|---|---|---|---|
+| Ortak havuz (başlık) | 0,008 | **0,031** [0,007-0,066] | 0,039 | 0,118 | 0,024 |
+| Tek belge (teşhis) | 0,094 | **0,157** [0,092-0,227] | 0,205 | 0,370 | 0,130 |
+
+**Hat doğrulaması:** sorgu olarak sorunun yerine kanıt metni verilince Recall@5 = 0,974
+(30 soru örneği). Chunk-sayfa eşlemesi, BM25 ve ölçüm kodu doğru; düşük sayılar hat
+hatası değil, gerçek bulgudur.
+
+**Bulgular:**
+
+- Ortak havuzdan tek belgeye geçince Recall@5 0,031 → 0,157. Büyük kısmı "yanlış belge
+  bulma" hatası; ama doğru belge verilse bile BM25 Recall@5 yalnızca 0,157.
+  **Revize notu (2026-10-01):** "büyük kısmı yanlış belge bulma" iddiası Deney 1'de abartılı bulundu
+  (belge isabeti @5 BM25 için 0,22 ama dense için 0,5-0,8); hata iki aşamalı ve sayfa bulma
+  daha baskın.
+- Örnek (Coca-Cola temettü oranı): soruda şirket adı var, doğru sayfanın metninde
+  genelde yok (ad kapakta/başlıkta). BM25 3M ve PepsiCo sayfalarını getirdi.
+  **Hipotez (ölçülecek):** chunk metnine belge künyesi (şirket, yıl, tür) eklemek
+  ortak havuz sonuçlarını belirgin iyileştirir. Gün 2'nin ilk deneyi.
+- Bu bir "iyi sistem" değil sıfır noktasıdır; sonraki her karar bu sayılara karşı ölçülür.
