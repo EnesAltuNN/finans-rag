@@ -384,3 +384,88 @@ korpusta 360 belge ve 53.399 sayfa var.
 
 **Not:** FinanceBench reposunda belge listesinde olmayan 8 ek PDF vardı; indirilmedi,
 korpus 360 belge. Soruların hiçbiri o 8 belgeye bağlı değil. README'de belirtildi (Durum bölümü).
+
+---
+
+## Deney 1: Belge künyesi (gün 2 ön deneyi) — TAMAMLANDI: H1 DESTEKLENMEDİ (5 yöntemin hiçbirinde anlamlı artış yok)
+
+**Sonuçlardan ÖNCE yazıldı (2026-10-01).** Amaç: sonuçlar gelince ölçütü kaydırmamak.
+
+**Gözlem:** ortak havuzda tüm yöntemler zayıf (Recall@5 ≈ 0,03-0,21), tek belgede çok
+daha iyi (≈ 0,16-0,57). Örnek: "Coca Cola FY2022 …" sorusuna BM25 3M ve PepsiCo sayfalarını
+getirdi; doğru sayfanın metninde şirket adı yoktu.
+
+**Müdahale:** her chunk'ın başına belge künyesi eklenir (`src/kunye.py`), ör.
+`"3M. 10-K annual report, fiscal year 2018."`. Künye yalnızca belge meta verisinden
+(şirket, tür, dönem) ve belge adından (çeyrek, tarih) üretilir; soru bilgisi kullanılmaz.
+Gerçek bir sistemde de her belge için mevcut bilgidir (sızıntı yok). Künye yalnızca
+gömme/indeks metnine eklenir; metin kapsama metriği orijinal chunk metniyle ölçülür.
+Chunk'ın kendisi (200 kelime) değişmez, künye ek ~15 token getirir.
+
+**Format tek ve sabit;** geliştirme sonuçlarına bakarak ayarlanmayacak (başka biçimler
+denenmeyecek, bu geliştirme kümesine uyarlamak olurdu).
+
+**Hipotez H1:** künye **ortak havuz** Recall@5'ini artırır.
+**Kontrol hipotezi H0-tek:** künye **tek belge** Recall@5'ini değiştirmez (künye aynı
+belgenin tüm chunk'larında aynı, belge içi sıralamayı ayırt etmez).
+
+**Başarı ölçütü (sabit):**
+
+1. Ortak havuz Recall@5'te, eşleştirilmiş bootstrap farkının (`degerlendir.karsilastir`,
+   10.000 tekrar, %95) aralığı 0'ı içermeyen pozitif fark: 5 yöntemden (BM25 + 4 dense)
+   **en az 4'ünde**.
+2. Kontrol: tek belge Recall@5'te |fark| < 0,05 ve anlamsız. Bu sağlanmazsa künye başka bir
+   mekanizmayla etki ediyor demektir ve sonuç ihtiyatla yorumlanır.
+
+**Raporlama:** 5 yöntem × 2 arama uzayı, fark ve aralıklarıyla, sonuç ne olursa olsun.
+10 karşılaştırma yapıldığından tek bir "anlamlı" sonuç tek başına güçlü kanıt sayılmaz;
+ölçüt 5 yöntemin çoğunda tutarlılık arar.
+
+**Maliyet:** dört modelin yeniden gömülmesi (~64 dk yerel GPU) + BM25 (~3 dk, CPU).
+
+**SONUÇ (2026-10-01; BM25 + 4 dense model, hepsi bitti)**
+
+Recall@5, B = künyeli, A = künyesiz; fark için eşleştirilmiş bootstrap %95 aralığı
+(`degerlendir.karsilastir`, 10.000 tekrar):
+
+| Yöntem | Ortak havuz A → B | Fark [aralık] | Tek belge A → B | Fark [aralık] |
+|---|---|---|---|---|
+| BM25 | 0,031 → 0,055 | +0,024 [0,000; +0,054] | 0,157 → 0,150 | -0,008 [-0,034; +0,017] |
+| bge-base-en | 0,157 → 0,173 | +0,016 [-0,047; +0,078] | 0,480 → 0,417 | -0,063 [-0,153; +0,033] |
+| e5-base | 0,213 → 0,126 | **-0,087 [-0,157; -0,016]** | 0,567 → 0,268 | **-0,299 [-0,396; -0,203]** |
+| gte-base-en | 0,189 → 0,157 | -0,031 [-0,102; +0,041] | 0,449 → 0,441 | -0,008 [-0,110; +0,098] |
+| BGE-M3 | 0,197 → 0,252 | +0,055 [-0,008; +0,125] | 0,433 → 0,425 | -0,008 [-0,083; +0,068] |
+
+**Ön kayıtlı ölçütlere göre:**
+
+1. **H1 desteklenmedi.** Ortak havuzda 5 yöntemin hiçbirinde anlamlı pozitif fark yok
+   (ölçüt ≥4/5 idi, sonuç 0/5); e5'te anlamlı **negatif** fark. BGE-M3 en büyük sayısal
+   artışı verdi (+0,055) ama aralığı 0'ı içeriyor.
+2. **Kontrol kısmen tutmadı.** Tek belgede BM25, gte ve BGE-M3 için fark anlamsız ve |fark|
+   < 0,05 (beklendiği gibi); ama e5 (R@5 0,567 → 0,268, anlamlı) ve bge-base (R@50 -0,118,
+   anlamlı) belirgin kötüleşti. Künye bazı modellerde belge içi sıralamayı bozuyor.
+
+**Ek analiz: belge düzeyi isabet** (`src/belge_isabeti.py`; ortak havuzda ilk k chunk'ın
+en az biri doğru belgeden mi):
+
+| Yöntem | Künyesiz @5 | Künyeli @5 | Künyesiz @50 | Künyeli @50 |
+|---|---|---|---|---|
+| BM25 | 0,222 | 0,293 | 0,646 | 0,727 |
+| bge-base-en | 0,495 | 0,586 | 0,919 | 0,980 |
+| e5-base | 0,697 | 0,818 | 0,970 | 0,990 |
+| gte-base-en | 0,586 | 0,626 | 0,929 | 0,980 |
+| bge-m3 | 0,808 | 0,859 | 0,970 | 0,980 |
+
+**Yorum (ölçülmüş olanla hipotez ayrı):**
+
+- Ölçüldü: künye **belgeyi bulmayı iyileştiriyor** (5/5 yöntemde belge isabeti @5 artıyor)
+  ama **belge içinde doğru sayfayı bulmayı bozuyor** (özellikle e5); net etki sıfır ya da negatif.
+- Ölçüldü: önceki "ortak havuzdaki darboğaz doğru belgeyi bulmak" iddiası **yanlıştı ya da
+  abartılıydı.** Künyesiz bile belge isabeti @5 = 0,5-0,8 (e5: 0,70; BGE-M3: 0,81), buna rağmen
+  sayfa Recall@5 yalnızca 0,16-0,21. Baskın zorluk **belge içinde doğru sayfayı bulmak**.
+- Hipotez (ölçülmedi): künye aynı belgenin tüm chunk'larını birbirine benzetip belge içi
+  ayırt ediciliği düşürüyor; ortalama-havuzlamalı e5'in en çok etkilenmesi bununla uyumlu ama
+  kanıtlanmadı. Künyenin token sınırını aşan chunk oranına etkisi ölçülmedi.
+- Sonuç: künyeyi chunk metnine eklemek **benimsenmez.** Belge bulma ve sayfa bulma
+  ayrı aşamalar olarak ele alınabilir (iki aşamalı arama / belge yönlendirme); bu yeni bir
+  hipotez olup ayrı ön kayıtla denenmelidir, bu sonuca göre ayarlanmış sayılmaz.
