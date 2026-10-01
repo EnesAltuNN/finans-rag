@@ -608,3 +608,51 @@ sonuca göre ayarlanmış sayılmaz.
 **Karar 7'ye etki:** mimari adımları ölçümle şöyle sonuçlandı: classic dense → +reranker
 (**anlamlı kazanç**) ; hibrit BM25 eklemek **kaybettiriyor**. Önerilen hat: dense ilk
 aşama + reranker. Fine-tune (adım 4) bu hat üzerinde ölçülecek.
+
+---
+
+## Denetim notları (2026-10-01, fine-tune öncesi gözden geçirme)
+
+**Hata analizi** (`src/hata_analizi.py`, e5 + reranker, geliştirme kümesi, Recall@5):
+
+| | Ortak havuz | Tek belge |
+|---|---|---|
+| metrics-generated | 27/49 | 35/49 |
+| novel-generated | 14/36 | 23/36 |
+| domain-relevant | 9/42 | 22/42 |
+| 1 kanıtlı soru | 34/75 | 54/75 |
+| 2 kanıtlı soru | 16/40 | 26/40 |
+| 3+ kanıtlı soru | **0/12** | **0/12** |
+| Kanıt sırası ≤5 / 6-10 / 11-50 / 51-100 / yok | 50 / 13 / 13 / 18 / 33 | 80 / 18 / 21 / 5 / 3 |
+
+- En zor tür domain-relevant. 3+ kanıtlı sorularda R@5 = 0/12, ama 12 kanıt çok az soruya
+  ait olabilir; örneklem küçük, sonuç yönlendirici.
+  **Düzeltme (2026-10-01):** bu 12 kanıt yalnızca **4 soruya** ait ve ikisinde aynı sayfa iki kez
+  kanıt olarak sayılmış (CVS s.172, MGM s.3); bağımsız sayfa sayısı 10. "0/12" bu yüzden
+  kesin bir bulgu değil, 4 sorunun gözlemi.
+- Ortak havuzda kanıtların ~%40'ı ilk 50 dışında (ilk aşama tavanı); tek belgede çoğu
+  kaçırma yakın kaçırma (6-50. sıra).
+- Kanıt metnindeki rakam oranı bulunanlarda 0,150, kaçırılanlarda 0,152: "tablolar zor
+  olduğu için kaçırıyoruz" hipotezi **desteklenmedi**.
+
+**Tekrarlanabilirlik:** bge-base-en gömmesi aynı oturumda iki kez bire bir aynı (fp16, GPU).
+Önbellekteki gömüyle (farklı batch bileşimi) en büyük fark 0,0005, minimum kosinüs 0,9991:
+ihmal edilebilir. Bootstrap tohumları sabit. Sonuçların üretildiği ortam
+`sonuclar/ortam.json` (`src/ortam_kaydi.py`). `requirements.txt` gerçekte kullanılan
+paketlere indirildi (kullanılmayan faiss-cpu, datasets, scipy, pandas, python-dotenv
+çıkarıldı; torch yerelde 2.7.0+cu118 idi, 2.5.1 değil).
+
+**Karar 2 revizesi gerekli (bulgu):** geliştirme kümesinde 99 cevabın 86'sı rakam içeriyor
+ama yalnızca 34'ü kısa (<40 karakter) sayısal cevap; medyan cevap uzunluğu 65 karakter.
+Çoğu cevap serbest metin ("No, the company is managing its CAPEX … which is evident from
+…"). Karar 2'deki "sayısal tolerans + normalize eşleşme" cevapların yaklaşık üçte birini
+kapsar; kalanı için LLM-judge (insan kalibrasyonlu) ya da anahtar-olgu kontrolü gerekir.
+Cevap üretimi öncesinde yeniden karara bağlanacak (karar verildi: "Karar 2 revizesi" bölümü).
+
+**Karar 4 (EDGAR):** PDF'ler 150 sorunun tüm belgelerini kapsıyor ve 360/360 belge parse
+edildi; EDGAR'a ihtiyaç görünmüyor. Kapatılması kullanıcı onayına bırakıldı (sonra kapandı: kapsam dışı).
+
+**Değerlendirme sınırı (not):** metrik tek bir gold sayfaya bakar; aynı bilgi başka bir
+sayfada da geçiyorsa (örneğin 10-K'da özet ve ayrıntılı tablo) o sayfayı getirmek hata
+sayılır. Sayfa Recall'u bu yüzden gerçek retrieval başarısını olduğundan düşük gösterebilir;
+cevap düzeyi ölçümü (Karar 2) bunu tamamlar.
