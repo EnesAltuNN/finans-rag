@@ -761,3 +761,33 @@ yargı cevap düzeyinde ölçümle verilmelidir. Bu, Karar 2'nin ertelenmiş rev
 **Sınırlar:** iki model, geliştirme kümesi (99 soru); c100/c300 farkları ölçüte takıldığı için
 "baz kalır" kararı sağlam, ama c100'ün ayrı bir hat olarak (ör. küçük chunk ilk aşama + büyük
 bağlam penceresi) değeri bu deneyle test edilmedi.
+
+---
+
+## Karar 4 kapanış ve Karar 2 revizesi (2026-10-01)
+
+**Karar 4 — KAPANDI: EDGAR kapsam dışı.** Gerekçe: FinanceBench PDF'leri 150 sorunun tüm
+belgelerini kapsıyor, 360/360 belge parse edildi, sorular zaten bu PDF'lerden yazılmış.
+EDGAR ek bir istemci, hız sınırı yönetimi ve doğrulama yüzeyi getirirdi.
+
+**Karar 2 revizesi — KAPANDI (yapı):** geliştirme kümesinde 99 cevabın türleri:
+
+| Tür | Adet | Nerede |
+|---|---|---|
+| Salt sayı | 34 | neredeyse tamamı metrics-generated |
+| Evet/hayır + açıklama | 30 | domain-relevant, novel-generated |
+| Metin içinde sayı | 28 | domain-relevant, novel-generated |
+| Serbest metin (sayı yok) | 7 | çoğunlukla domain-relevant |
+
+Orijinal Karar 2 ("sayısal tolerans + normalize eşleşme") cevapların yaklaşık üçte birini
+kapsıyordu. **Revize (karar): katmanlı, önce deterministik metrik:**
+
+| Tür | Metrik |
+|---|---|
+| Salt sayı | Sayıyı ayrıştır, birim/ölçek normalize et; **gold'un gösterdiği hassasiyette eşleşme** (birincil) ve %1 göreli tolerans (ikincil); ikisi de raporlanır |
+| Evet/hayır + açıklama | **Hüküm** (Yes/No) tam eşleşme; açıklama kalitesi ikincil |
+| Metin içinde sayı | Gold'daki anahtar sayıların cevapta bulunması |
+| Serbest metin | LLM-yargıç, 30-50 örnekte insan kalibrasyonlu; yalnızca birkaç soru |
+
+Yargıç kullanılırsa okuyucudan farklı bir model olmalı (kendi çıktısını kayırma riski),
+uyum oranı (insanla) raporlanır. %65'e yakın cevap yargıç olmadan ölçülür.
