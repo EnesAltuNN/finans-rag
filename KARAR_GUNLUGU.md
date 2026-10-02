@@ -1224,3 +1224,51 @@ aynı sonucu verdi. **Karar (ön kayda göre): DB bu koşuyla final hatta kullan
 - **Gecikme (medyan, run'lar arası büyük oynama var):** Chroma ortak 1,2-3,4 ms; **filtreli tek belge
   35-97 ms, yani filtresiz aramadan ~30 kat yavaş**; tam arama GPU 1,5-9,4 ms (ilk koşuda ölçümde
   başka yük vardı), CPU ~14 ms.
+
+### Deney 6b: yeniden açılmış koleksiyonla doğrulama — ÖN KAYIT (SONRADAN YAZILDI)
+
+**Şeffaflık notu:** bu bölüm, ilk koşunun başarısızlığı ve 0,982'lik yeniden açılmış sonuçlar **görüldükten
+sonra** yazıldı; bu yüzden ayrı bir deneydir ve ilk koşuyu geçersiz kılmaz, tamamlar. Gerekçe: final hat
+koleksiyonu her zaman diskten yeniden açarak kullanacaktır (kurulum bir kez yapılır), dolayısıyla
+**yeniden açılmış durum** operasyonel olarak ilgili durumdur.
+
+**Protokol:** koleksiyon kurulur ve kapatılır (yapıldı); ölçüm **üç ayrı yeni Python sürecinde**, her biri
+koleksiyonu diskten açarak, Deney 6 ile **aynı betik ve aynı dört ölçütle**, `ef_search=100`. (1) `tekrar`
+(yapıldı), (2) `tekrar2`, (3) `tekrar3` yeni süreçlerde. **Ölçüt:** üç koşunun üçünde de (a)-(d) sağlanır.
+Referans fp16 tam arama olarak kalır (değiştirilmedi); referans gürültüsü yukarıda raporlandı.
+
+**Karar kuralı:** 6b ölçütü sağlanırsa Chroma, final hatta **yeniden açılmış koleksiyon olarak** kullanılabilir
+ve K1 DB üzerinden üretilir; sağlanmazsa K1 tam aramayla üretilir ve DB demo yolu olarak kalır.
+Her iki durumda ilk koşunun (kurulum hemen sonrası) başarısızlığı raporda yer alır.
+
+**SONUÇ, Deney 6b (2026-10-02; üç bağımsız süreç, koleksiyon her seferinde diskten açıldı)**
+
+| Koşu | Örtüşme@50 ortak | Örtüşme@50 tek (filtreli) | Reranker sonrası Recall@1000w farkı (DB − tam) ortak / tek | Ölçüt (a)-(d) |
+|---|---|---|---|---|
+| tekrar | 0,982 | 0,992 | 0,000 [0,000; 0,000] / 0,000 [0,000; 0,000] | Sağlandı |
+| tekrar2 | 0,982 | 0,992 | aynı | Sağlandı |
+| tekrar3 | 0,982 | 0,992 | aynı | Sağlandı |
+
+**6b ölçütü sağlandı (3/3).** Sonuçlar koşular arasında birebir kararlı. `ef_search=100` yeterli (400 ve 1000
+aynı sonucu verir).
+
+**Karar: Chroma final hatta kullanılabilir, yeniden açılmış (kalıcı) koleksiyon olarak.** Deney 5'teki K1
+(getirilen) bağlamı Chroma üzerinden üretilir; vektörler ve reranker Deney 5 ön kaydıyla aynı olduğundan
+tanım değişmez. Raporda şu üç şey birlikte verilir:
+
+1. **İlk koşu (kurulum hemen sonrası) başarısızdı** (ortak örtüşme 0,916); nedeni bilinmiyor
+   (hipotez: bulk eklemeden sonra bellekteki indeks henüz tam değil). Operasyonel kural: **koleksiyon
+   kurulduktan sonra kapatılıp yeniden açılmadan kullanılmaz.**
+2. **Referans (fp16 tam arama) kendi içinde 0,988 örtüşme tavanına sahip;** 0,982 bu tavana çok
+   yakındır, yani HNSW kaybı hassasiyet gürültüsünden ayırt edilemeyecek kadar küçüktür.
+3. **Bedeller:** disk 2018 MB (ham vektörler 240 MB); kurulum 652 sn; **filtreli arama ~97 ms**, filtresiz
+   aramadan ~30 kat yavaş (ortak ~3,4 ms; tam arama GPU ~1,5 ms, CPU ~14 ms).
+
+**Yorum:** bu ölçekte (163 bin vektör) vektör veritabanı **kaliteyi korur ama hız ya da basitlik kazandırmaz**;
+tam arama zaten milisaniye mertebesinde ve yaklaşıklık hatası taşımaz. Veritabanının değeri burada operasyonel:
+kalıcılık, metadata filtresi, ölçeklenebilirlik ve standart bir RAG yığınının parçası olması. Bu, README'de
+ölçümle gerekçelendirilir.
+
+**Not (6b'nin sınırı):** üç koşu aynı koleksiyonu aynı makinede aynı sorgularla açar; bağımsız bir koleksiyon
+kurulumu (yeniden indeksleme) ve başka bir makine ölçülmedi. Kurulum sonrası tutarsızlığın nedeni
+çözülmemiştir.
