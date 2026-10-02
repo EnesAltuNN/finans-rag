@@ -1090,3 +1090,36 @@ cevaplandığı anlamına gelir, bu sınırlılık olarak raporlanır.
 
 **Raporlama:** tüm koşullar ve okuyucular, sonuç ne olursa olsun; çoklu karşılaştırma uyarısıyla
 (ölçütler tutarlılık arar). Olumsuz sonuç (ör. c300'ün c200'ü geçememesi) bu proje için bulgudur.
+
+---
+
+## Karar 13: Vektör veritabanı — KAPANDI (2026-10-02)
+
+**Soru (kullanıcı):** RAG sistemlerinde vektör veritabanı kullanmamız gerekmiyor mu? **Mevcut durum:**
+chunk gömüleri `embeddings/*.npy` dosyalarında, arama `Q @ E.T` + `torch.topk` ile **tam (kaba kuvvet,
+flat)** yapılıyor; işlevsel olarak bir flat vektör deposu. Ölçüm (e5-base, 163.543 vektör, 1 sorgu):
+CPU 13,9 ms, GPU 1,6 ms. Bu ölçekte tam arama hızlı ve yaklaşıklık hatası taşımaz; tüm önceki
+ölçümler bu yüzden birebir tekrarlanabilir. Vektör veritabanlarının asıl değeri: yaklaşık indeksler
+(milyon+ ölçek), kalıcılık, ekleme/silme, metadata filtreleme, servis.
+
+**Karar (kullanıcı): gerçek bir vektör veritabanı kullanılacak.** Seçenekler (bu makinede doğrulandı):
+
+| Aday | Bu makinede | Gerçek indeks | Not |
+|---|---|---|---|
+| **Chroma 1.5.9** | Hazır paket (Py 3.13/Windows); numpy ve torch'a dokunmaz; onnxruntime, protobuf, pydantic yükler | HNSW (cosine; varsayılan ef_construction 100, ef_search 100, max_neighbors 16) | Gömülü, kalıcı, altyapısız. Dokümanda tam arama seçeneği yok |
+| Qdrant 1.19.1 | İstemci hazır; sunucu için **Docker gerekir, kurulu değil** | Sunucuda evet | Yerel modu dokümana göre geliştirme/prototip/test içindir |
+| LanceDB 0.39.0 | Hazır paket | Evet | Daha az yaygın |
+| pgvector | PostgreSQL kurulu değil | Evet | Ek altyapı |
+
+**Seçim: Chroma.** Gerekçe: altyapı gerektirmez, gerçek HNSW indeksi sunar, bu makinede hemen
+çalışır. Bir soyutlama katmanı (`vektor_deposu`) ileride Qdrant'a geçişi kolaylaştırır. Chroma'nın
+metadata filtreleme ve kalıcı istemci desteği dokümantasyon sayfasında görülemedi; **uygulamada
+çalıştırılarak doğrulanacak**.
+
+**Entegrasyon derinliği (kullanıcı): doğrulanırsa K1'in ilk aşaması.** DB doğrudan K1'in yerine
+konmaz; önce Deney 6'da tam aramayla karşılaştırılır. Ölçüt geçerse final hattı DB üzerinden çalışır;
+geçmezse DB ayrı bir demo/sorgu yolu olarak kalır ve neden raporlanır.
+
+**Bilimsel risk (açık):** vektör veritabanları **yaklaşık** arama yapar. "Tek belge" teşhis ölçümü
+yüksek seçicilikte filtre gerektirir (bir belgenin ~460 chunk'ı / 163.543 = %0,3); filtreli HNSW
+bilinen bir zayıf durumdur ve isabeti düşürebilir.
