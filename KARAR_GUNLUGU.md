@@ -1123,3 +1123,104 @@ geçmezse DB ayrı bir demo/sorgu yolu olarak kalır ve neden raporlanır.
 **Bilimsel risk (açık):** vektör veritabanları **yaklaşık** arama yapar. "Tek belge" teşhis ölçümü
 yüksek seçicilikte filtre gerektirir (bir belgenin ~460 chunk'ı / 163.543 = %0,3); filtreli HNSW
 bilinen bir zayıf durumdur ve isabeti düşürebilir.
+
+---
+
+## Deney 6: Vektör veritabanı (Chroma, HNSW) vs tam arama — ÖN KAYIT, ÇALIŞTIRILMADI
+
+**Sonuçlardan ÖNCE yazıldı (2026-10-02).** Hiçbir Chroma kurulumu/ölçümü yapılmadı.
+
+**Soru:** yaklaşık (HNSW) arama, tam aramanın ürettiği retrieval kalitesini koruyor mu; ve bu, filtreli
+(tek belge) aramada da geçerli mi? Cevap evetse final hattı DB üzerinden çalışabilir.
+
+**Kurulum (sabit):** `chromadb==1.5.9`, kalıcı istemci (`data/islenmis/chroma/`, repoya girmez);
+koleksiyon mesafesi **cosine**; koleksiyon, **e5-base-v2 c200 künyesiz gömüleriyle** (`embeddings/e5-base.npy`,
+163.543 vektör) kurulur, vektörler birebir aynı (yeniden gömme yok). Metadata: `chunk_id`, `doc`,
+`sayfa_idx`. İndeks kurulum parametreleri **varsayılan** (ef_construction 100, max_neighbors 16).
+Sorgu vektörleri tam aramadakiyle aynı (query: öneki, normalize).
+
+**Arama uzayları (Karar 9):** ortak havuz (filtresiz, ilk 100) ve tek belge (`doc == sorunun belgesi`
+filtresi, ilk 100). Geliştirme kümesi, 99 soru.
+
+**Ölçümler:**
+
+1. **Küme örtüşmesi:** soru başına |DB ilk-50 ∩ tam ilk-50| / 50 ortalaması (ayrıca ilk-5 ve ilk-100).
+2. **Retrieval kalitesi:** Recall@1000w ve Recall@50, DB sıralaması vs tam arama (eşleştirilmiş,
+   şirket-kümeli bootstrap).
+3. **Reranker sonrası:** Deney 2'deki aynı reranker ve derinlik 50 ile Recall@1000w, DB vs tam arama.
+4. **Gecikme ve maliyet:** sorgu başına ms (medyan ve p95) tam arama (GPU, CPU) vs Chroma; indeksleme
+   süresi; disk boyutu.
+
+**Ölçüt (sabit): DB, final hattında kullanılabilir sayılır ancak aşağıdakilerin TÜMÜ sağlanırsa:**
+
+- (a) ortak havuzda ortalama ilk-50 örtüşmesi **≥ 0,95**;
+- (b) tek belgede (filtreli) ortalama ilk-50 örtüşmesi **≥ 0,95**;
+- (c) reranker sonrası Recall@1000w farkının (DB − tam) %95 aralığının **alt sınırı ≥ −0,05**, her iki
+  arama uzayında ("aşağı olmama": en fazla 5 puan kayıp kabul edilir);
+- (d) filtreli aramada sorgu başına istenen 100 sonucun hepsi dönüyor (eksik sonuç yok).
+
+**Tek ayar adımı (ön tanımlı):** (a)-(d) sağlanmazsa **yalnızca `ef_search`** sırayla 100 → 400 → 1000
+yapılır (indeks yeniden kurulmaz); ilk sağlanan ayar seçilir, üçü de raporlanır. Hiçbiri sağlamazsa DB
+final hattında kullanılmaz, demo yolu olarak kalır ve neden raporlanır. Başka ayar (M, ef_construction,
+filtre stratejisi) bu deneyde denenmez.
+
+**Açık beklenti (tahmin, ölçülmedi):** filtresiz ortak havuzda varsayılan ayarla yüksek örtüşme (≥0,95)
+bekliyorum; **tek belge filtreli aramada en büyük kaybı bekliyorum** (seçici filtre, %0,3) ve
+ef_search artırımının gerekebileceğini tahmin ediyorum. Ölçüt bu tahmine göre değil sabit eşiğe göre
+değerlendirilir.
+
+**Doğrulama zorunlulukları (uygulama sırasında):** Chroma'nın cosine mesafesinin yorumu (1 − cos)
+tam aramayla küçük bir örnekte tutarlılık testiyle doğrulanır; filtre ve kalıcılık davranışı çalıştırılarak
+teyit edilir; yeniden başlatmadan sonra koleksiyonun aynı sonuçları verdiği test edilir.
+
+**Raporlama:** üç ef_search ayarı × iki arama uzayı, tüm ölçümler, sonuç ne olursa olsun. Olumsuz sonuç
+("HNSW filtreli aramada kaybettiriyor") bu proje için bulgudur.
+
+**Final hatta etkisi:** ölçüt geçerse Deney 5'teki K1 (getirilen) bağlamı DB üzerinden üretilir ve
+bu, Deney 5 ön kaydındaki "ortak havuz, e5-base, reranker" tanımıyla uyumludur (aynı vektörler, aynı
+reranker); geçmezse K1 tam aramayla üretilir.
+
+**Protokol notu (çalıştırmadan ÖNCE, 2026-10-02): ölçüt (d) ve referans düzeltmesi.** Ön kayıtta (d)
+"istenen 100 sonucun hepsi dönüyor" yazıyordu; bu küçük belgeler için yanlış tanımlanmıştı. Geliştirme
+kümesinde 17/99 sorunun belgesi 100 chunk'tan küçük (7'si 50'den küçük; ör. Amcor 8-K: 23 chunk). Doğru
+tanım: **(d) filtreli aramada sorgu başına min(100, belgedeki chunk sayısı) sonuç dönmeli, ve dönen
+sonuçların hepsi filtredeki belgeye ait olmalı.** Örtüşme ölçümlerinde tek belge referansı (tam arama)
+da yalnızca belge içi chunk'lara kırpılır. Ölçütlerin eşikleri (0,95; −0,05) ve ef_search merdiveni
+değişmedi.
+
+**Önceki sonuçlar hakkında bulgu (etki yok):** önceki tek belge sıralamaları (`dense_baseline.py`,
+`bm25_baseline.py`), belgesi 100 chunk'tan küçük 17 soruda belge dışı chunk'larla **dolduruluyordu**
+(toplam 785 yabancı chunk). Yabancı chunk'lar atılıp metrikler yeniden hesaplandığında Recall@5 ve
+Recall@1000w (e5, bge-base, BGE-M3; ilk aşama ve reranker sonrası) **birebir aynı** çıktı (fark 0,0000):
+gold sayfa daima belge içi chunk'lar arasında ve dolgu yalnızca onlardan sonra geliyor. Hiçbir sonuç
+değişmedi; yine de gelecekte tek belge sıralamaları belge içi chunk'larla sınırlanmalıdır (Deney 6'da
+bu uygulanıyor).
+
+**SONUÇ, Deney 6 ilk koşu (2026-10-02; `src/deney6_vdb.py`, koleksiyon kurulduktan HEMEN SONRA ölçüldü)**
+
+Kurulum 652 sn, 163.543 vektör, disk **2018 MB** (ham vektörler yalnızca 240 MB: chunk metinleri, HNSW
+grafiği ve SQLite eklenir).
+
+| ef_search | Örtüşme@50 ortak | Örtüşme@50 tek (filtreli) | Reranker sonrası Recall@1000w farkı (DB − tam), ortak | tek | (d) ihlali |
+|---|---|---|---|---|---|
+| 100 / 400 / 1000 (üçü aynı) | **0,916** | 0,990 | -0,008 [-0,025; 0,000] | 0,000 [0,000; 0,000] | 0 |
+
+**Ön kayıtlı ölçüt: (a) başarısız** (0,916 < 0,95), (b), (c), (d) sağlandı. Merdivenin üç basamağı da
+aynı sonucu verdi. **Karar (ön kayda göre): DB bu koşuyla final hatta kullanılmaz.**
+
+**Yan bulgular (açıklayıcı, ölçüt dışı):**
+
+- **ef_search bu ölçekte etkisiz:** ayar gerçekten uygulanıyor (yapılandırma 10, 100, 1000 olarak
+  okundu) ama sonuç değişmiyor; HNSW bu ölçekte doygun.
+- **Referansın kendisi gürültülü (`src/deney6_tani.py`, post hoc):** fp16 tam arama ile fp32 tam arama
+  arasında bile ilk-50 örtüşmesi 0,988 (@5: 0,972). Yani 0,95 eşiği "tam arama kendisiyle"
+  kıyasında bile hassasiyet tavanının yakınındaydı; yaklaşıklığı ölçerken referans hassasiyeti ayrı
+  tutulmalıydı (ön kayıtta öngörülmemiş bir tasarım zayıflığı).
+- **Tutarsızlık:** aynı koleksiyonu kapatıp yeniden açınca (aynı veri, aynı sorgular) ortak örtüşme **0,982**
+  çıktı (tani ve `tekrar` koşusu). Kurulumdan hemen sonraki durum ile yeniden açılmış durum farklı
+  davranıyor. Neden: bilinmiyor. Hipotez (ölçülmedi): bulk ekleme sonrasında bellekteki indeks
+  henüz tam değil (daha hızlı ama daha az isabetli: ilk koşuda ortak sorgu 1,2 ms, yeniden açılmışta
+  3,4 ms).
+- **Gecikme (medyan, run'lar arası büyük oynama var):** Chroma ortak 1,2-3,4 ms; **filtreli tek belge
+  35-97 ms, yani filtresiz aramadan ~30 kat yavaş**; tam arama GPU 1,5-9,4 ms (ilk koşuda ölçümde
+  başka yük vardı), CPU ~14 ms.
