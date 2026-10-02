@@ -1272,3 +1272,141 @@ kalıcılık, metadata filtresi, ölçeklenebilirlik ve standart bir RAG yığı
 **Not (6b'nin sınırı):** üç koşu aynı koleksiyonu aynı makinede aynı sorgularla açar; bağımsız bir koleksiyon
 kurulumu (yeniden indeksleme) ve başka bir makine ölçülmedi. Kurulum sonrası tutarsızlığın nedeni
 çözülmemiştir.
+
+**Protokol notu, Deney 5 uygulama adım 1 (çalıştırmadan ÖNCE, 2026-10-02): bağlam üretimi ve prompt v1.**
+
+- **K1-c200** bağlamı Chroma üzerinden üretilir (yeniden açılmış koleksiyon, `ef_search=100`, Deney 6b),
+  reranker Deney 2 ile aynı (derinlik 50). **K1-c300** için Chroma koleksiyonu kurulmadı ve Deney 6b
+  doğrulaması yapılmadı; bu yüzden K1-c300 bağlamı **kayıtlı tam-arama + reranker sıralamasından**
+  (Deney 4, derinlik 33) alınır. c200 için DB ile tam arama reranker sonrası birebir aynı Recall verdi
+  (Deney 6b), bu yüzden karşılaştırmayı bozması beklenmez; yine de c200 (DB) ile c300 (tam arama) arka
+  uçları farklıdır ve H5c yorumlanırken bu not edilir.
+- **Bağlam kuralı doğrulandı:** her K1 bağlamı tam 1000 kelime (c200 ve c300; 99 sorunun hepsinde),
+  etiketler (`[belge: ..., sayfa: ...]`) kelime sayılmaz. **K2** gold sayfaların tam metni, kesilmez
+  (medyan 432, ortalama 484, maks 2144 kelime); K1'e kıyasla bağlam miktarı farklıdır, K2 bir **referans**
+  koşuldur. Kanıt sayfasını içeren soru oranı K1-c200'de 0,475, K1-c300'de 0,485 (kanıt bazlı oran 0,429 /
+  0,424; Deney 4'teki Recall@1000w ile uyumlu).
+- **Prompt v1** `sonuclar/prompt_v1.json` içinde sha256 ile kayıtlıdır; aynı sürüm numarasıyla değişen
+  şablon reddedilir. İçerik: İngilizce, tek kullanıcı mesajı + kısa sistem mesajı; bağlamlı koşullarda
+  "yalnızca bağlamı kullan", biçim talimatları (yuvarlama/birim, kısa gerekçe, evet/hayır sorularında "Yes"
+  ya da "No" ile başla, sayıyı birimiyle yaz), çıktı: `Final answer: ...` ve `Sources: <belge>, <sayfa>; ...`
+  (kapalı kitapta yalnızca `Final answer`). Yes/No ve birim talimatları gold cevap biçimini taklit eden
+  **biçim** talimatlarıdır, doğruluğa göre ayarlanmış değildir (hiçbir model cevabı henüz görülmedi).
+  **v1 pilotta biçim hatası verirse v2'ye geçilebilir (yalnızca biçim gerekçesiyle); pilottan sonra
+  dondurulur.**
+- **Pilot:** 12 geliştirme sorusu, soru türü başına 4, id sırasıyla (`sonuclar/pilot_idler.json`);
+  yalnızca biçim doğrulanır (ayrıştırma oranı, boş/engellenmiş çağrılar).
+- **Maliyet tahmini (token = kelime × 1,4-2,0, çağrı başına 300-800 çıkış token; Gemini tokenizer'ı
+  bilinmiyor, ilk çağrıda `count_tokens` ile doğrulanacak):** geliştirme tek geçiş, iki okuyucu, 4 koşul,
+  792 çağrı: `gemini-3.8-flash` $0,79-1,67, `gemini-3.5-flash-lite` $0,43-0,99; toplam **$1,22-2,66**
+  (pilot ~%12 ek). Kullanıcı bakiyesi TRY 496,48; tek geçiş bakiyeye, USD/TRY kuru 186'nın altında olduğu
+  sürece sığar. Düşünme (thinking) tokenları çıktı olarak faturalanır; üst sınır buna göre bırakılmıştır.
+
+**Protokol notu, Deney 5 (çalıştırmadan ÖNCE, 2026-10-02): harcama tavanı, prompt incelemesi ve v2.**
+
+- **Harcama tavanı (kullanıcı kararı): 250 TL** (kur 55 TL/USD, yaklaşık $4,5; kullanıcı bakiyesi TRY 496,48).
+  Planlanan akışın (pilot + geliştirme + kilitli test) tahmini maliyeti 110-240 TL; tavanı aşan her
+  harcama için önce kullanıcı onayı alınır, betik her çalıştırmadan önce tahmini maliyeti TL'ye çevirip
+  gösterir. Google tarafında da AI Studio "Monthly spend cap" ayarı kullanılır (dokümantasyonda
+  proje düzeyinde aylık sınır olarak geçer; para birimi sayfada belirtilmemiş, kullanıcı panelden
+  doğrulayacak). Ön ödemeli kredi sıfırlanınca tüm anahtarlar durur (dokümantasyon).
+- **Prompt incelemesi (v1, hiçbir çağrı yapılmadan):** gerçek soru kalıpları incelendi (99 soruda 27'si
+  "using/relying on/based on", 20'si "round", 11'i birim, 30'u evet/hayır, 4'ü liste isteyen). Gemini
+  benzeri gerçekçi çıktı biçimleri (markdown, `Sources:` satırı, ters sıra, `none`) cevap metriğinden
+  geçirildi ve **iki sorun** bulundu: (1) `Sources: DOC_2022_10K, 100` satırındaki sayfa numarası
+  gold'daki "%100" anahtar sayısıyla yanlış eşleşip hatalı cevabı doğru sayıyordu; (2) atıf doğruluğunu
+  ölçecek ayrıştırıcı yoktu. `cevap_metrik.py` düzeltildi: markdown işaretleri temizlenir, `Sources`
+  satırı cevabın sayısal içeriğinden ayrılır (ters sırada gelse de), `atiflar` ve `atif_skorla`
+  eklendi (isabet, kesinlik, bağlamda bulunma oranı = uydurma atıf ölçüsü); testler gerçekçi çıktı
+  biçimleriyle genişletildi.
+- **Prompt v2** (v1 hiç çalıştırılmadığı için sürüm yükseltmesi; v1 geçmiş olarak kalır). Değişenler,
+  hepsi **biçim ve okuma** talimatları, hiçbiri doğruluğa göre ayarlanmadı: (a) "retrieved" yerine
+  tarafsız "passages from company filings"; (b) bağlam parçaları farklı yıl/çeyrek/dosyalardan
+  olabileceği, yalnızca şirket-dönem-metrikle eşleşenlerin kullanılması; (c) nihai cevabın kısa olması
+  (liste istenmedikçe); (d) düz metin, markdown yok; (e) `Sources` etiketlerinin birebir kopyalanması.
+  `sonuclar/prompt_v2.json` sha256 ile dondurulmuştur (pilot sonrası kesin dondurma kuralı aynen geçerli).
+
+**Protokol notu, Deney 5 (çalıştırmadan ÖNCE, 2026-10-02): API hesabı doğrulaması ve okuyucu betiği.**
+
+- **Hesap (kullanıcının ekran görüntülerinden):** tek proje, 1 anahtar, **ücretli katman (Tier 1, ön ödemeli)**
+  (dokümantasyona göre içerik ürün iyileştirmede kullanılmaz).
+  Aylık harcama sınırı sayfasında para birimi **TL** (TRY 250,00). **Yakalanan hata:** sınır ilk başta başka bir
+  projeye konmuştu; sınır proje düzeyinde olduğundan anahtarın projesinde geçerli
+  olmayacaktı. Kullanıcı düzeltti ve sınırı anahtarın projesine koydu. Google'ın sınırı
+  "~10 dakikalık gecikmeyle aşılabilir, deneysel" olduğundan **asıl koruma betiğin kendi harcama takibidir**
+  (aşağıda), Google sınırı ikinci emniyettir.
+- **Modeller doğrulandı (anahtarla `models.list`, ücretsiz çağrı):** `gemini-3.8-flash` ve
+  `gemini-3.5-flash-lite` mevcut, girdi sınırı 1.048.576, çıktı sınırı 65.536 token, ikisi de **düşünen
+  (thinking) model**; düşünme tokenları ayrı sayılır (`thoughts_token_count`) ve çıktı fiyatından
+  faturalanır, bu yüzden gerçek harcama ilk çağrılardan ölçülecektir.
+- **SDK:** `google-genai==2.28.0` (resmî SDK; eski `google-generativeai` kullanımdan kaldırılmış).
+  Kurulum, mevcut yığını bozmadı (`pip check` temiz; `websockets` 17,1 → 16,1,1 ve `cffi` 1,17,1 → 2,1,1
+  değişti, hiçbir kurulu paket websockets'e bağlı değil).
+- **Betik (`src/okuyucu_gemini.py`) güvenceleri:** anahtar yalnızca `GEMINI_API_KEY` ortam
+  değişkeninden; **onbellek** (aynı istek ikinci kez gönderilmez); **harcama tavanı 250 TL = $4,545
+  (kur 55)**, her çağrıdan önce o çağrının en kötü durum maliyeti birikmiş harcamaya eklenerek kontrol
+  edilir ve aşılacaksa **çağrı yapılmadan durur**; prompt dondurma doğrulaması; geçici hatalarda (429, 5xx)
+  en fazla 3 deneme (2 sn, 4 sn bekleme), kalıcı hatada (4xx) denemez; hatalı/boş yanıt başarı olarak
+  önbelleğe yazılmaz (sonraki çalıştırmada tekrar denenir) ve değerlendirmede **yanlış** sayılır.
+  Varsayılan çalışma **kuru çalışmadır** (ücretsiz `count_tokens` ile gerçek girdi tokenları, tahmini
+  maliyet); gerçek çağrı için `--onayla` gerekir.
+- **Ayar eklemeleri (ön kayıttaki "diğer parametreler varsayılan"a göre küçük sapmalar):** `seed=0`
+  (belirlilik için) ve `max_output_tokens=8192` (yalnızca **maliyet güvencesi**: düşünen bir modelin
+  kontrolsüz düşünmesini sınırlar; siradan bir cevap bunun çok altındadır, kesilme olursa `bitis_nedeni`
+  kaydedilir ve raporlanır). Sıcaklık 0 ve düşünme ayarları API varsayılanıdır.
+- **Testler:** API'ye ve anahtara hiç dokunmayan sahte istemciyle (`tests/test_okuyucu.py`): maliyet
+  hesabı, önbellek, tavan (çağrı yapılmadan durma), yeniden deneme (503→başarı, 400 deneme yok, hep 429
+  → hata kaydı), boş yanıtın hata sayılıp yine de ücretlendirilmesi.
+
+**Protokol notu, Deney 5 (2026-10-02): pilot sonuçları ve harcama tavanının 250 → 350 TL'ye yükseltilmesi.**
+
+**Pilot biçim sonuçları (yalnızca biçim; doğruluğa bakılmadı, doğruluğa göre prompt ayarlanmadı):**
+5 çalıştırma, 60 yanıt (flash-lite: K0, K1-c200, K1-c300, K2; 3.8-flash: K1-c200; her biri 12 pilot soru):
+hatalı/boş yanıt **0**; `Final answer:` satırı **60/60**; `Sources:` satırı **48/48** (K1/K2'de beklenen);
+markdown **1/60** (ayrıştırıcı temizliyor); **uydurma atıf 0/69** (modelin andığı hiçbir sayfa bağlam dışında
+değil; model etiketteki "sayfa:" kelimesini de kopyalayabiliyor, ayrıştırıcı bunu kabul ediyor).
+**Prompt v2'de değişiklik gerekmedi.**
+
+**Ölçülen maliyet ve düşünme tokenları:**
+
+| Model | Düşünme tokenı (medyan / ort / maks) | Çağrı başına |
+|---|---|---|
+| gemini-3.5-flash-lite | 0 / 0 / 0 (varsayılan ayarda düşünmüyor) | K0 0,021; K1 0,065; K2 0,043 TL |
+| gemini-3.8-flash (K1-c200) | **696 / 928 / 2836** | **0,322 TL** (kur 55) |
+
+3.8-flash çağrı başına ortalama 0,322 TL ile **tetik eşiğini (0,30 TL) aştı**; betik durdu ve kullanıcıya
+soruldu. Maliyetin ~%65'i düşünme tokenlarından geliyor (çıktı yalnızca ~108 token). **Planın
+ölçülen sayılarla güncellenmiş tahmini:** harcanan 6,2 TL + pilotun kalanı ~10 + geliştirme flash-lite ~19 +
+geliştirme 3.8-flash ~111 + kilitli test ~67 = **~213 TL**; 250 TL tavanıyla marj yalnızca ~37 TL (%15) ve
+düşünme tokenı çok değişken (maks. 2836), yeniden çalıştırma sığmazdı.
+
+**Karar (kullanıcı): tavan 350 TL** (kur 55: ≈ $6,36; bakiye TRY 496,48). Protokol değişmedi: iki okuyucu,
+düşünme API varsayılanı. Alternatifler değerlendirildi ve seçilmedi: Batch API (dokümantasyona göre
+%50 indirim; mühendislik ve bekleme maliyeti) ve düşünmeyi kısmak (davranışı değiştirir, yeniden pilot
+gerektirir). `src/okuyucu_gemini.py` içindeki `TAVAN_TL` 350 yapıldı. **Kullanıcı Google AI Studio'da
+anahtarın projesinin aylık sınırını da 350 TL yapmalıdır** (Google sınırı ikinci emniyettir; birincil
+koruma betiğin kendi harcama takibidir).
+
+**Pilot tamamlandı ve prompt v2 KESİN DONDURULDU (2026-10-02).**
+
+Pilot: 2 model × 4 koşul × 12 soru = 96 çağrı (yalnızca biçim). Sonuç: hatalı/boş yanıt **0**; bitiş nedeni
+hepsinde `STOP`; `Final answer:` **96/96**; `Sources:` **72/72** (K1/K2'de beklenen); **uydurma atıf 0/95**.
+Prompt v2'de değişiklik gerekmedi; **dondurma kuralı gereği v2 artık değişmez** (değişirse yeni sürüm sayılır,
+tüm çalıştırmalar tekrarlanır ve sürüm sayısı raporlanır). Pilot yanıtları (aynı prompt, aynı istek özeti)
+önbellekte kalır ve geliştirme çalıştırmalarında yeniden kullanılır (12 pilot sorusu için yeniden
+çağrı yapılmaz).
+
+**Ölçülen çağrı maliyetleri (TL, kur 55):**
+
+| Koşul | flash-lite | 3.8-flash | 3.8-flash düşünme medyanı |
+|---|---|---|---|
+| K0 (kapalı kitap) | 0,021 | 0,216 | 742 |
+| K1-c200 | 0,065 | 0,322 | 696 |
+| K1-c300 | 0,065 | 0,378 | 926 |
+| K2 (oracle) | 0,043 | 0,202 | 429 |
+| **Soru başına dört koşul** | **0,194** | **1,118** | |
+
+**Geliştirme çalıştırmasının tahmini maliyeti:** 87 yeni soru (99 − 12 önbellekte) × (0,194 + 1,118) ≈ **114 TL**
+(flash-lite ~17, 3.8-flash ~97). Harcanan 15,74 TL. Geliştirme sonrası toplam ≈ 130 TL; kilitli test
+(51 soru) ek ~67 TL; planın toplamı ≈ 213 TL, tavan 350 TL. Düşünme tokenı çok değişkendir (3.8-flash
+maks. 2836), tahmin ±%30 belirsizdir.
