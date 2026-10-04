@@ -1763,3 +1763,76 @@ bu sonuçlar farklılaşabilir; kilitli test yapılmadı; aynı geliştirme küm
 geliştirme sonuçları kilitli testte doğrulanmalıdır (çoklu müdahale iyimserliği). **Elle puanlama turu (d9, 96 cevap):** v3
 cevaplarının 22/96'sında v3'ün talimat verdiği "The passages do not contain this." cümlesi görünür; metne müdahale edilmedi,
 bu körlüğü kısmen zayıflatır ve raporda sınırlılık olarak belirtilir.
+
+## Karar 10 revizesi 2 — yargıç model (2026-10-04) — ÖN KAYIT, çalıştırılmadan yazıldı
+
+**Neden:** Deney 8 ve 9'un son 16 serbest metin sorusunda 96 yeni cevabın elle puanlanması gerekiyor. Kullanıcı, okuyucu olmayan iyi
+bir Gemini modelinin yargıç olmasını istedi. Yargıç, kullanıcının ilk tur puanlarına (128 cevap) karşı kalibre edilir.
+
+**Yargıç:** `gemini-3.7-flash` (okuyucu değil). Düşünme ayarı varsayılan. temperature 0, seed 0, max_output_tokens 4096.
+Prompt `src/yargic_gemini.py` içinde (SISTEM + KULLANICI). Yargıç model adını, koşulu ve kaynak listesini görmez.
+Prompt, çalıştırmadan önce bu commit ile donar. Çalıştırmadan sonra değişmez.
+
+**Maliyet ölçümü (8 çağrı, 0,29 TL):** çağrı başına ~106 düşünme tokeni, 3 çıktı tokeni. 192 çağrı için tahmin ~7 TL
+(üst sınır 10 TL). Kullanıcı bu maliyeti onayladı. Bu 8 çağrının sonucu (8/8 uyum) kalibrasyona dahildir, ayrıca sayılmaz.
+
+**Öğeler (192):** 128 kalibrasyon (K0, K1-c200, K1-c300, K2 × 2 okuyucu × 16 soru; kullanıcının puanı var) + 64 yeni
+(K1-R2 v2 ve v3 × 2 okuyucu × 16 soru).
+
+**Başarı ölçütleri (kalibrasyon, 128 öğe; hepsi sağlanmalı):**
+1. İkili sıkı uyum (doğru ve diğerleri) ≥ %90.
+2. Her okuyucu modelde ikili sıkı uyum ≥ %80, her koşulda (K0, K1-c200, K1-c300, K2) ≥ %80.
+3. Yargıç, doğru/yanlış yönünde sistematik bir okuyucuyu kayırmamalı: iki okuyucu için "yargıç doğru oranı − insan doğru oranı"
+   farkının mutlak değeri ≤ 0,05.
+4. Ayrıştırılamayan yanıt sayısı = 0 (en fazla 1 yeniden deneme; sonra hata sayılır).
+Üç sınıflı uyum (doğru/kısmen/yanlış) ve karışıklık matrisi de raporlanır; ölçüt değildir.
+
+**Geçerse:** 64 yeni cevabın puanı yargıçtan alınır. K1-c200 cevapları kalibrasyondaki yargıç puanını kullanır, ama
+kullanıcının ilk tur puanı varken önceliği kullanıcıya ver: 128 cevap için puan = kullanıcı puanı, 64 yeni cevap için puan = yargıç.
+Raporda "64 cevap yargıç puanlı" açıkça yazılır.
+**Kalırsa:** sonuç olduğu gibi raporlanır. Kullanıcı `puanlama_d9.html` (96 cevap) dosyasını elle puanlar.
+Yargıç prompt'u sonuca göre ayarlanmaz (ayarlama = kalibrasyon kümesine uydurma). Gerekirse yeni bir ön kayıt açılır.
+
+**Sınırlar:** Yargıç ve okuyucular aynı model ailesinden; benzer hatalar paylaşılabilir. Kalibrasyon yalnızca tek bir insan
+puanlayıcıya karşıdır. Yargıç puanlı 64 cevap raporda ayrı işaretlenir.
+
+**SONUÇ, yargıç kalibrasyonu (2026-10-04; `data/islenmis/cevaplar/yargic/`)**
+
+192 çağrı, 0 hata, 0 ayrıştırılamayan yanıt. Bu çalıştırma 6,81 TL (8 çağrılık ölçüm dahil toplam ~7,1 TL). **Toplam harcama 191,16 TL / 350 TL.**
+
+| Ölçüt | Sonuç | Eşik | |
+|---|---|---|---|
+| 1. İkili sıkı uyum (128) | **0,945** | ≥ 0,90 | geçti |
+| 2. Okuyucu bazında uyum | flash-lite 0,922; 3.8-flash 0,969 | ≥ 0,80 | geçti |
+| 2. Koşul bazında uyum | K0 0,938; K1-c200 0,938; K1-c300 0,906; K2 1,000 | ≥ 0,80 | geçti |
+| 3. Kayırma (yargıç − insan doğru oranı) | flash-lite −0,047; 3.8-flash −0,031 | \|fark\| ≤ 0,05 | geçti (flash-lite sınıra yakın) |
+| 4. Ayrıştırılamayan yanıt | 0 | 0 | geçti |
+
+Üç sınıflı uyum 0,906. Yargıç hafif **katıdır**: insan "doğru" dediği 5 cevaba "kısmen", 1 cevaba "yanlış" dedi; insan "yanlış" dediği 4 cevaba "kısmen" dedi.
+Doğru ↔ yanlış çelişkisi yalnızca 1 cevap. **Yargıç geçti.** 64 yeni cevap (K1-R2 v2/v3) yargıç puanlıdır: 38 doğru, 13 kısmen, 13 yanlış.
+`sonuclar/elle_puanlar_d9.json` bu karışık kaynakla yazıldı (K1-c200 = kullanıcı tur 1; K1-R2 = yargıç; her kayıtta `kaynak` alanı var).
+Test-tekrar uyumu (kullanıcı ikinci tur) hesaplanmadı; yargıç kalibrasyonu onun yerine geçti.
+
+**NİHAİ SONUÇ, Deney 9 (99 soru, şirket-kümeli bootstrap, %95)**
+
+| Okuyucu | K0 | K1-c200 | K1-R2 (v2) | **K1-R2 (v3)** | K2 oracle |
+|---|---|---|---|---|---|
+| gemini-3.5-flash-lite | 0,323 | 0,485 | 0,525 | **0,576** | 0,768 |
+| gemini-3.8-flash | 0,545 | 0,566 | 0,586 | **0,667** | 0,818 |
+
+- **H9a (V3 − V2): SAĞLANDI.** 3.8-flash +0,081 [+0,034; +0,132] anlamlı. flash-lite +0,051 [0,000; +0,116] anlamlı değil, negatif de değil. Yumuşak puanlamada aynı sonuç (+0,081 / +0,061).
+- V3 − K1-c200 (başlangıç hattı): +0,091 [+0,033; +0,156] ve +0,101 [+0,022; +0,180]. İki okuyucuda anlamlı.
+- V3 − K0: +0,253 ve +0,121, ikisi anlamlı. K2 − V3 (kalan boşluk): +0,192 ve +0,152, anlamlı.
+- H9b: 3.8-flash, "kanıt bağlamda yok" grubunda 0,42 → 0,56 (K0 = 0,51); "kanıt var" grubunda 0,71 → 0,75. Kayıp yok.
+- H9c: uydurma atıf yok (bağlamda = 1,00, tüm koşullar).
+
+**NİHAİ SONUÇ, Deney 8 (99 soru)**
+
+- H8a (K1-R2 − K1-c200): flash-lite +0,040 [−0,024; +0,103]; 3.8-flash +0,020 [−0,069; +0,099]. **0/2 anlamlı: ölçüt SAĞLANMADI.**
+- H8b (K1-R2 − K0): flash-lite +0,202 anlamlı; 3.8-flash +0,040 anlamlı değil. **1/2: ölçüt SAĞLANMADI.**
+- H8c: K2 − K1-R2 = +0,242 ve +0,232, anlamlı. Kalan boşluk büyük; darboğaz hâlâ doğru sayfayı bulmak.
+- Yumuşak puanlamada aynı sonuç.
+- **Sonuç:** Yönlendirme (R2) yalnız başına cevap doğruluğunu anlamlı artırmadı (retrieval'da kazanç vardı, Deney 7). Kazanç prompt v3 ile birlikte geldi.
+
+**Sınırlar:** 64 cevap yargıç puanlı (kalibrasyonda %94,5 uyum, hafif katı). Yargıç ve okuyucu aynı model ailesinden. Tek insan puanlayıcı.
+Aynı geliştirme kümesinde üç müdahale denendi; kilitli testte doğrulanmalı. Kilitli test yapılmadı.
