@@ -1502,3 +1502,96 @@ Yumuşak analizde sonuç aynı: H5a +0,141 * / +0,010; H5c -0,020 / 0,000; ölç
 dayanıklıdır.** c300, 99 soruda c200'den anlamlı biçimde iyi değildir (farklar hafif negatif); **c200 kesin
 olarak kalır.** H5a yalnızca zayıf okuyucuda doğrulandı; güçlü okuyucuda retrieval cevap doğruluğunu net
 artırmadı (+0,020). Retrieval kaybı (oracle farkı) iki okuyucuda anlamlı ve büyük (+0,25-0,28).
+
+---
+
+## Deney 7: Belge yönlendirme (şirket ve yıl ile arama uzayını daraltma), retrieval düzeyi — ÖN KAYIT, ÇALIŞTIRILMADI
+
+**Sonuçlardan ÖNCE yazıldı (2026-10-04).** Hiçbir yönlendirme kodu yazılmadı ve ölçülmedi.
+
+**Gözlem (Deney 5):** retrieval en büyük kayıp kalemi: oracle (K2) ile RAG (K1-c200) arasında 25-28 puan; kanıt
+sayfası soruların ~%48'inde bağlamda. Doğru sayfa bağlamda olunca RAG kapalı kitaptan çok iyi (+0,17 / +0,36),
+olmayınca kapalı kitaptan kötü. Deney 1'de belge isabeti @5 künyesiz bile 0,5-0,8 iken sayfa Recall'u
+düşüktü; asıl kayıp ortak havuzda **yanlış belgelerin karışması** (tek belge uzayında Recall@1000w 0,646,
+ortak havuzda 0,409; aynı şirketin başka yılları ve başka şirketler). Soru metni çoğu zaman şirketi ve dönemi
+söylüyor ("3M FY2018", "AMD FY22").
+
+**Müdahale (kural tabanlı, LLM yok, ücretsiz):** soru metninden **şirket** ve **mali yıl** çıkarılır; arama uzayı o
+şirketin (ve yılın) belgelerine daraltılır; aynı dense (e5-base, c200) + aynı reranker (derinlik 50) bu daraltılmış
+uzayda çalışır. Künye yok, fine-tune yok.
+
+**Şirket bulma (sabit):** `belgeler.jsonl`'deki 40 şirket adı ve `doc_name` önekleri otomatik normalize edilir
+(küçük harf, noktalama/kesme işareti boşluk, "corporation/inc/company/co" gibi ekler atılır, ad ve sondaki "s"
+atılmış/eklenmiş varyantı); soru da aynı biçimde normalize edilip **kelime sınırlı** eşleşir (≥6 karakterli adlar
+bitişik yazılmış hâlle de eşleşir, kısa adlar yalnızca token olarak). Elle alias listesi **yalnızca şunlardır:**
+`jnj` ve `j&j` → Johnson & Johnson, `amex` → American Express. Başka alias eklenmeyecek. Şirket bulunamazsa
+yönlendirme yapılmaz (global arama, mevcut hat). Birden çok şirket bulunursa birleşimi.
+
+**Yıl bulma (sabit):** `FY2018`, `FY 2018`, `FY18`, `fiscal year 2018`, `Q2 2023`/`Q2 of FY2023`, `... 2022` gibi
+4 haneli (2010-2029) ya da `FY`+2 haneli yıllar; birden çok yıl varsa hepsi. Doküman dönemi `doc_period` (mali yıl).
+
+**İki varyant (önceden ilan edildi):**
+
+| Varyant | Aday belgeler |
+|---|---|
+| **R1** | Bulunan şirketin TÜM belgeleri |
+| **R2** | Bulunan şirketin, soruda geçen yılların **y ve y+1** dönemli belgeleri (y+1: sonraki yılın 10-K'sı önceki yıl karşılaştırma verisi taşır); yıl yoksa ya da bu filtreyle belge kalmazsa R1'e düşer |
+
+**Ölçümler (geliştirme, 99 soru, ortak havuz, e5-base c200 + reranker derinlik 50, kümeli bootstrap):**
+
+1. **Yönlendirme tanıları:** şirket bulunan soru oranı; **yönlendirme isabeti** (gold belge aday kümede mi);
+   yanlış şirket eşleşmesi oranı; ortalama aday belge ve chunk sayısı (daralma).
+2. **Retrieval kalitesi:** reranker sonrası **Recall@1000w**, yönlendirmeli vs mevcut hat (eşleştirilmiş
+   şirket-kümeli bootstrap, 10.000 tekrar, %95); kanıt sayfası bağlamda olan soru oranı.
+3. **Tavan referansı:** oracle belge yönlendirmesi (tek belge) reranker sonrası Recall@1000w = 0,646 (Deney 4/5).
+
+**Ölçüt (sabit):** yönlendirme **benimsenir** ancak şu ikisi birlikte sağlanırsa: (a) yönlendirme isabeti
+**≥ 0,90** (filtre gold belgeyi nadiren dışarıda bırakır); (b) reranker sonrası Recall@1000w farkının
+(yönlendirmeli − mevcut) %95 aralığının **alt sınırı > 0** (anlamlı pozitif). R2 birincildir; R2 (a)/(b)'yi
+sağlamazsa ve R1 sağlarsa R1 benimsenir; ikisi de sağlamazsa mevcut hat kalır. İki varyant denendiği için
+hafif seçim iyimserliği vardır ve raporlanır.
+
+**Açık beklenti (tahmin, ölçülmedi):** yönlendirmenin Recall@1000w'yi belirgin artırmasını (0,41 → 0,55-0,65
+aralığına), ancak yıl filtresinin (R2) zaman zaman gold belgeyi dışarıda bırakmasını (isabet ~0,9 civarı)
+bekliyorum; şirket adı bulunamayan sorularda kazanç olmayacak. Ölçüt bu tahmine göre değil sabit eşiğe göre
+değerlendirilir.
+
+**Sınırlar (önceden):** (1) kurallar yazılırken geliştirme sorularının ifadeleri görülmüştü ("JnJ", "McDonald's",
+"AMCOR's" gibi); alias listesi bu yüzden minimaldir ama geliştirme sonucu **kurallara uyarlanmış iyimser** olabilir;
+kilitli testte bu kurallar **değiştirilmeden** uygulanır ve orası bağımsız bir sınamadır. (2) Deney retrieval
+düzeyindedir; cevap doğruluğuna etkisi ayrı deneyle (Deney 8) ölçülür. (3) Yönlendirmeli arama tam (exact) aramayla
+yapılır; Chroma'da `$in` filtresi doğrulanmadı, benimsenirse ayrı doğrulama (Deney 6c) gerekir.
+
+**SONUÇ, Deney 7 (2026-10-04; `src/yonlendirme.py`, `src/deney7_yonlendirme.py`; geliştirme, 99 soru, e5-base c200 + reranker derinlik 50)**
+
+Kurallar ölçümden önce commitlendi (`149d3a5`) ve ön kayıtla birebir aynıdır (spec testleri `tests/test_yonlendirme.py`).
+
+| | R1 (şirketin tüm belgeleri) | R2 (şirket, y ve y+1 dönemleri) |
+|---|---|---|
+| Yönlendirilen soru (şirket bulundu) | 93 / 99 | 93 / 99 |
+| Gold şirket bulundu / yanlış şirket eşleşmesi | 93/93 / **0** | 93/93 / **0** |
+| **Yönlendirme isabeti** (gold belge aday kümede), tüm sorular | **1,000** | **0,980** |
+| Ortalama aday belge / chunk (yönlendirilenler) | 9,8 / 4.432 | **3,6 / 1.354** (360 belge / 163.543 chunk yerine) |
+| Recall@1000w, ilk aşama | 0,252 → 0,291 (+0,039) | 0,252 → 0,354 (+0,102) |
+| **Recall@1000w, reranker sonrası** | 0,409 → 0,441, **+0,031 [+0,008; +0,061] \*** | 0,409 → 0,504, **+0,094 [+0,028; +0,161] \*** |
+| Recall@5 (reranker sonrası) | 0,394 → 0,417 | 0,394 → 0,480 |
+| Gold sayfası ilk 1000 kelimede olan soru oranı | 0,485 → 0,525 | **0,485 → 0,566** |
+| Ön kayıtlı ölçüt (a) isabet ≥0,90 ve (b) alt sınır >0 | **sağlandı** | **sağlandı** |
+
+**Karar (ön kayıtlı kural): R2 benimsenir** (ikisi de ölçütü sağladı, R2 birincildir). Referanslar: mevcut hat 0,409,
+oracle tek belge tavanı 0,646; R2 aradaki 0,237'lik boşluğun ~%40'ını (0,095) kapattı. Kalan boşluk belge
+içinde doğru **sayfayı** bulmaktır (aday belge sayısı 360'tan ~3,6'ya inse de).
+
+**Yöntemin sınırları (tanılar):**
+
+- **Yıl penceresi sistematik olarak iki durumda gold belgeyi kaçırıyor (2 soru, isabet 0,980):** (1) ileriye
+  dönük soru: "FY2023'te JnJ'nin düzeltilmiş EPS büyümesi hızlanacak mı?" gold belge 2022 Q4 kazanç bildirimi
+  (dönem 2022, 2023 beklentisini içerir; pencere [2023, 2024]); (2) önceki yıl verisi: "Pfizer 2019…" gold belge
+  PFIZER_2021_10K (çok yıllı karşılaştırma içerir; pencere [2019, 2020]). Pencerenin y+1 ile sınırlı olması ön
+  kayıttaki bir tasarım tercihiydi; genişletmek geliştirme verisine uyarlama olurdu, yapılmadı.
+- **Şirketi bulunamayan 6 soru** (yönlendirme yok, mevcut hat): 4'ü yalnızca "MGM" (ön kayıtta öngörülen sınır:
+  otomatik varyantlar "MGM Resorts" adını bağlamaz), 2'si şirket adı hiç anmıyor ("board member nominees…").
+- **İyimserlik uyarısı:** kurallar yazılırken geliştirme sorularının ifadeleri görülmüştü; geliştirme isabeti
+  (93/93, sıfır yanlış eşleşme) bu yüzden iyimser olabilir. Kilitli testte kurallar **değiştirilmeden** uygulanacaktır.
+- Yönlendirmeli arama tam (exact) aramayla ölçüldü; Chroma'nın `$in` filtresi doğrulanmadı (benimsenirse
+  Deney 6c: aynı doğrulama protokolüyle). Cevap doğruluğuna etkisi henüz ölçülmedi (Deney 8).
