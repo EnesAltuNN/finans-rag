@@ -1671,3 +1671,95 @@ Yönlendirme, kanıtın bağlamda olduğu soru sayısını 41 → 49'a çıkard�
 atıf isabeti 0,42 → 0,48'e yükseldi ve "atıf yok" oranı düştü. **Ama kanıt bağlamda olmayan 34 soruda güçlü okuyucu
 kapalı kitaptan hâlâ kötü (0,41 vs 0,56):** prompt "yalnızca bağlamı kullan" dediği için model kendi bilgisine
 dönmüyor; bu sorunu yönlendirme çözmedi, prompt ele almalı (Deney 9).
+
+---
+
+## Deney 9: Prompt v3, "bağlam yetmezse kendi bilginle cevapla" — ÖN KAYIT, ÇALIŞTIRILMADI
+
+**Sonuçlardan ÖNCE yazıldı (2026-10-04).** Hiçbir v3 isteği üretilmedi, hiçbir çağrı yapılmadı.
+
+**Gözlem:** Deney 5 ve 8: kanıt sayfası bağlamda **olmadığında** güçlü okuyucu (3.8-flash) kapalı kitaptan **kötü** (K1-R2:
+0,41 vs K0: 0,56; 34 soru) ve K1 cevaplarının ~%46'sında "bağlam bilgi içermiyor" benzeri ifade var.
+
+**Müdahale (tek değişken: bağlamlı prompt'un tek bir talimat maddesi).** Prompt **v3**, v2'den yalnızca şu maddeyle farklıdır
+(sistem mesajı, ortak talimat, çıktı biçimi, kapalı kitap şablonu, bağlam ve etiketler **birebir aynı**):
+
+- v2: `- Use ONLY the information in the passages above. If they do not contain what is needed, say so briefly and give your best answer anyway.`
+- **v3:** `- Use the passages above as your primary source. If they do not contain what is needed, say so briefly (begin your reasoning with "The passages do not contain this."), then answer from your own knowledge of the company and its filings and give your best estimate.`
+
+Bağlam **K1-R2** (Deney 8) ile aynıdır; iki okuyucu ve tüm API ayarları aynıdır. Karşılaştırma referansı Deney 8'deki
+**K1-R2 (v2)** yanıtlarıdır.
+
+**Pilot (yalnızca biçim):** 12 pilot sorusu × 2 okuyucu (K1-R2-V3); `Final answer`/`Sources` ayrıştırılabilirliği, boş yanıt,
+ve "The passages do not contain this." ifadesinin sıklığı. Pilotta doğruluğa göre prompt ayarlanmaz; biçim hatası
+varsa v3 yalnızca biçim gerekçesiyle değiştirilir (v3 tam çalıştırılmadan donmaz); pilot sonrası **v3 dondurulur**.
+
+**Puanlama:** 99 soru (otomatik + elle). Elle puanlanacak 16 soru için **tek tur, 96 cevap, kör ve karışık:** K1-c200 +
+K1-R2 (v2) + K1-R2 (v3), her biri × 2 okuyucu. Bu tur Deney 8'in elle bölümünü de kapsar (K1-c200 daha önce
+puanlandığından test-tekrar tutarlılığı ölçülür).
+
+**Hipotezler ve ölçütler** (eşleştirilmiş şirket-kümeli bootstrap, 10.000 tekrar, %95):
+
+- **H9a:** K1-R2-V3 doğruluğu K1-R2-V2'den yüksektir. **Ölçüt:** güçlü okuyucuda (3.8-flash) **anlamlı pozitif** VE zayıf
+  okuyucuda (flash-lite) **anlamlı negatif değil**. (Zayıf okuyucunun kendi bilgisi az olduğundan kazanç beklenmez;
+  ama kaybetmemesi gerekir.)
+- **H9b (tanı, ölçütsüz):** kanıt bağlamda **olmayan** sorularda v3 doğruluğu kapalı kitaba ulaşıyor mu (3.8-flash:
+  0,41 vs 0,56)? kanıt bağlamda **olan** sorularda v3 kayıp yaratıyor mu?
+- **H9c (dayanak/atıf, ölçütsüz):** v3 modeli kendi bilgisiyle cevaplamaya yöneltir; bu **dayanaklılık** (atıf) pahasına
+  olabilir. Raporlanacak: "bağlam yok" ifadesinin oranı, "Sources: none" oranı, atıf isabeti, bağlamda olmayan sayfa
+  atfı (uydurma atıf) oranı.
+
+**Açık beklenti (tahmin, ölçülmedi):** 3.8-flash'ta +4-8 puan (kazanç ağırlıkla "kanıt yok" alt grubunda), flash-lite'ta
+~0 (bilgisi az); 99 soruyla anlamlılığın sınırda olmasını bekliyorum, yani H9a ölçütü ~yarı yarıya. Ölçüt bu tahmine
+göre değil sabit eşiğe göre değerlendirilir.
+
+**Gerilim (önceden):** v3 doğruluğu artırsa bile cevabın bağlama **dayanmasını** azaltabilir (RAG'ın amacı kaynaklı
+cevap). Karar yalnızca doğruluğa göre değil, dayanaklılığa da bakılarak verilir; ikisi birlikte raporlanır ve
+final sistem tanımında v3 benimsenirse bu bedel açıkça belirtilir.
+
+**Maliyet:** pilot 24 çağrı ~5 TL + tam 198 çağrı ~33 TL ≈ 38 TL; toplam harcama ~183 TL (harcanan 145,40), tavan 350 TL.
+**Kilitli test bu deneyde KULLANILMAZ.**
+
+**GEÇİCİ SONUÇ, Deney 9 (2026-10-04; `src/deney9_olc.py`; yalnızca 83 otomatik puanlanan soru, elle puanlanacak 16 soru HENÜZ DAHİL DEĞİL)**
+
+Pilot (12 soru × 2 okuyucu): hata 0, `Final answer` 24/24, `Sources` 24/24, uydurma atıf 0, markdown 0; prompt v3 pilot sonrası
+dondu (`sonuclar/prompt_v3.json`). Tam çalıştırma: 87 yeni soru × 2 okuyucu = 174 çağrı, 0 hata; v3 toplam 33,95 TL (pilot dahil
+38,6 TL); **toplam harcama 184,06 TL / 350 TL**.
+
+| Okuyucu | K0 | K1-c200 (v2) | K1-R2 (v2) | **K1-R2 (v3)** | K2 oracle |
+|---|---|---|---|---|---|
+| gemini-3.5-flash-lite | 25/83 = 0,301 | 37/83 = 0,446 | 43/83 = 0,518 | **48/83 = 0,578** | 61/83 = 0,735 |
+| gemini-3.8-flash | 44/83 = 0,530 | 45/83 = 0,542 | 49/83 = 0,590 | **55/83 = 0,663** | 66/83 = 0,795 |
+
+| Karşılaştırma (B − A, şirket-kümeli bootstrap, %95; \* anlamlı) | flash-lite | 3.8-flash |
+|---|---|---|
+| **H9a** V3 − V2 (K1-R2) | +0,060 [0,000; +0,138] | **+0,072 [+0,026; +0,128] \*** |
+| V3 − K0 | +0,277 [+0,159; +0,421] \* | +0,133 [+0,053; +0,219] \* |
+| V3 − K1-c200 (başlangıç hattı) | +0,133 [+0,059; +0,210] \* | +0,120 [+0,047; +0,192] \* |
+| K2 − V3 (kalan boşluk) | +0,157 \* | +0,133 \* |
+
+**Ön kayıtlı H9a ölçütü (güçlü okuyucuda anlamlı pozitif VE zayıf okuyucuda anlamlı negatif değil): SAĞLANDI** (geçici).
+Zayıf okuyucuda kazanç da sınırda anlamlı (alt sınır 0,000). Ön kayıttaki tahmin (3.8-flash +4-8, flash-lite ~0) kısmen
+yanlıştı: flash-lite de kazandı (+0,060). **K1-R2 (v3), başlangıç hattına (K1-c200, v2) göre iki okuyucuda da anlamlı biçimde
+daha iyi (+0,12 / +0,13)** ve her ikisi de kapalı kitaptan anlamlı iyi.
+
+**H9b tanı (kanıt sayfası K1-R2 bağlamında VAR 49 / YOK 34 soru):**
+
+| | VAR: V2 → V3 | YOK: V2 → V3 | K0 (VAR / YOK) |
+|---|---|---|---|
+| flash-lite | 0,59 → 0,65 | 0,41 → 0,47 | 0,27 / 0,35 |
+| 3.8-flash | 0,71 → 0,73 | **0,41 → 0,56** | 0,51 / **0,56** |
+
+v3, güçlü okuyucuda "kanıt bağlamda yok" grubunu **kapalı kitap seviyesine çıkardı (0,41 → 0,56 = K0)** ve "kanıt var"
+grubunda kayıp yaratmadı (0,71 → 0,73). Beklenen mekanizma doğrulandı.
+
+**H9c dayanaklılık:** uydurma atıf **yok** (atıfların %100'ü bağlamda; v2 ve v3). v3'te model bilgisiyle cevapladığında
+bunu belirtiyor: "Sources: none" ve atıf yok oranı 3.8-flash'ta 0,11 → 0,21, atıf kesinliği 0,42 → 0,48; atıf isabeti
+değişmedi (0,48 → 0,47). "The passages do not contain this." ifadesi flash-lite'ta 0,14 → 0,34 (v3'ün talimatı), 3.8-flash'ta
+0,30 → 0,32. Yani doğruluk kazancı **kaynak gösterme dürüstlüğü korunarak** geldi: model bilgisine döndüğünde bunu açıkça işaretliyor.
+
+**Sınırlar:** 83 soru (elle puanlama sonrası 99; ölçüt sınırdaki flash-lite için değişebilir); elle puanlanacak 16 soruda
+bu sonuçlar farklılaşabilir; kilitli test yapılmadı; aynı geliştirme kümesinde ardışık üç müdahale (yönlendirme, v3) denendi,
+geliştirme sonuçları kilitli testte doğrulanmalıdır (çoklu müdahale iyimserliği). **Elle puanlama turu (d9, 96 cevap):** v3
+cevaplarının 22/96'sında v3'ün talimat verdiği "The passages do not contain this." cümlesi görünür; metne müdahale edilmedi,
+bu körlüğü kısmen zayıflatır ve raporda sınırlılık olarak belirtilir.
