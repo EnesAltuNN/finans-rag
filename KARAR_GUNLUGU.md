@@ -6,6 +6,40 @@ sorusunun cevabı bir cümle değil, bir ölçüm olsun.
 **Kayıt biçimi:** seçenekler → takaslar → karar → gerekçe → (varsa) ölçüm.
 Karar değişirse eskisi silinmez, altına "revize edildi" notu düşülür.
 
+**Durum özeti (2026-10-01, ikinci gözden geçirme sonrası)**
+
+| # | Konu | Durum |
+|---|---|---|
+| 1 | Korpus ve değerlendirme seti | KAPANDI: c, sıkı sızıntı denetimiyle. FinQA ile fine-tune'ın faydası henüz sınanmadı |
+| 2 | Cevap doğruluğu metriği | İlk hâli (b + a) yetersiz çıktı, **2r ile revize edildi** |
+| 2r | Karar 2 revizesi | KAPANDI: katmanlı, önce deterministik; kod ve gerçekçi cevap testleri tamam (`src/cevap_metrik.py`) |
+| 3 | Fine-tune modeli ve batch | İSTEĞE BAĞLI EK (Karar 11): aday listesi kapandı; batch ölçümü ve strateji yalnızca fine-tune yapılırsa gerekir |
+| 4 | SEC EDGAR dahil mi | KAPANDI: kapsam dışı |
+| 5 | Baseline hattı | KAPANDI: 200 kelime chunk (revize), BM25 ve dense ayrı ölçüldü |
+| 6 | Kanıt eşleştirme kuralı | KAPANDI: c (sayfa ana metrik, metin ikincil) |
+| 7 | Retrieval mimarisi | ÖLÇÜMLE SONUÇLANDI: dense ilk aşama + reranker (Deney 2, 3). Dense model: e5-base-v2 (Karar 12) |
+| 8 | Kilitli test seti | KAPANDI: 99 geliştirme + 51 kilitli, şirket bazında. 51 soru / 11 şirket yalnızca büyük farkları ayırt eder |
+| 9 | Arama uzayı | KAPANDI: başlık ortak havuz (360 belge), teşhis için tek belge |
+| 10 | Okuyucu model ve bağlam koşulları | REVİZE EDİLDİ: üç koşul; okuyucu = yalnızca API, iki Gemini katı; model adları ve prompt açık |
+| 11 | Proje hedefi ve fine-tune'ın yeri | KAPANDI: asıl hedef finans RAG; fine-tune isteğe bağlı ek, çekirdek sonrası |
+| 12 | Final protokolde dense model | KAPANDI: e5-base-v2 (seçim nokta tahmini ve verimlilikle; farklar anlamlı değil) |
+| D1 | Deney 1: belge künyesi | REDDEDİLDİ (H1 desteklenmedi) |
+| D2 | Deney 2: reranker | DESTEKLENDİ (H2) |
+| D3 | Deney 3: hibrit BM25 + dense | REDDEDİLDİ (H3, H3b) |
+| D4 | Deney 4: chunk boyutu / örtüşme | c200 kalır (hiçbir varyant 4/4 ölçütünü geçmedi) |
+| 13 | Vektör veritabanı | KAPANDI: Chroma; Deney 6b ile doğrulandı, K1'in ilk aşaması (yeniden açılmış koleksiyon) |
+| D5 | Deney 5: uçtan uca RAG, cevap düzeyi (final protokol) | Geliştirme TAMAM (99 soru, elle puanlar dahil): H5a 1/2, H5c 0/2 (ölçütler sağlanmadı, c200 kalır); kilitli test yapılmadı |
+| D7 | Deney 7: belge yönlendirme (şirket/yıl), retrieval düzeyi | TAMAMLANDI: H7 DESTEKLENDİ (R2 benimsendi; Recall@1000w 0,409 → 0,504) |
+| D8 | Deney 8: belge yönlendirmenin cevap doğruluğuna etkisi | TAMAM (99 soru, yargıç kalibreli): H8a 0/2, H8b 1/2, ölçütler SAĞLANMADI |
+| D9 | Deney 9: prompt v3 (bağlam yetmezse kendi bilgisiyle cevapla) | TAMAM (99 soru, yargıç kalibreli): H9a SAĞLANDI |
+| D6 | Deney 6: vektör veritabanı (HNSW) vs tam arama | İlk koşu başarısız (kurulum hemen sonrası), **6b geçti (3/3 yeniden açılmış koşu)**: Chroma yeniden açılmış koleksiyon olarak kullanılabilir |
+
+Bekleyen işler (çekirdek RAG): final protokolün ön kaydı, üretim hattı (prompt, atıf, Gemini API),
+cevap düzeyinde ölçüm, kilitli test ölçümü. Fine-tune isteğe bağlı ek (Karar 11). Ayrıntı: "İnceleme
+notları" ve Karar 10-12.
+
+---
+
 ## Karar 1: Korpus ve değerlendirme seti — KAPANDI
 
 | Seçenek | Artı | Eksi |
@@ -1925,3 +1959,4 @@ flash-lite VAR: K0 0,39 → K1 0,68; YOK: 0,50 → 0,55. 3.8-flash VAR: 0,55 →
 3. Ham doğruluk farkları geliştirmeden küçük; en büyük kazanç zayıf okuyucuda.
 
 **Sınırlar:** 51 soru, 11 şirket (geniş aralıklar); 90/306 cevap yargıç puanlı (kalibrasyonda %94,5 ikili uyum, hafif katı; yargıç ve okuyucu aynı aileden); tek insan puanlayıcı ile kalibrasyon; kilitli küme bir kez kullanıldı ve **bir daha kullanılamaz**; Chroma bu testte kullanılmadı (exact arama); K1-c200 başlangıç hattı kilitlide çalıştırılmadı (üstünlük yalnız geliştirmede gösterildi). Sonuçlara bakılarak sistem, eşik veya hipotez değiştirilmedi.
+
