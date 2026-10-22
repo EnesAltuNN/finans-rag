@@ -1,0 +1,14 @@
+# Surumler kasten sabit: yeniden uretilebilirlik icin.
+# Sadece kodun gercekten kullandigi paketler listelenir; yeni bir adim (orn. fine-tune) baska
+# paket gerektirirse eklenir. Sonuclarin uretildigi tam ortam: sonuclar/ortam.json
+#
+# Not: yerelde torch 2.7.0+cu118 (RTX 2060) kullanildi. Colab'da farkli bir derleme olabilir;
+# gomme ve skor farklari kosinus ~0.999 mertebesindedir (src/ ile olculdu, fp16 batch etkisi).
+sentence-transformers==3.3.1
+transformers==4.47.1
+torch==2.7.0
+rank-bm25==0.2.2
+pymupdf==1.28.2
+numpy==2.1.1
+chromadb==1.5.9
+google-genai==2.28.0
